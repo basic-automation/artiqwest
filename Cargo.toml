@@ -1,0 +1,20 @@
+[package]
+name = "artiqwest"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+hyper = { version = "1", features = ["full"] }
+url = "2"
+bytes = "1"
+anyhow = "1"
+arti-client = { version = "0.20.0", features = ["full", "static"] }
+http-body-util = "0"
+hyper-util = { version = "0", features = ["full"] }
+tokio = { version = "1", features = ["full"] }
+tokio-native-tls = "0"
+tracing-subscriber = "0"
+lazy_static = "1"
+tor-rtcompat = "0"
+serde = { version = "1", features = ["derive"] }
+thiserror = "1"

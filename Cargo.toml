@@ -2,6 +2,13 @@
 name = "artiqwest"
 version = "0.1.0"
 edition = "2021"
+description = "A simple client for making http request over Tor with Arti."
+license = "MIT"
+repository = "https://github.com/basic-automation/artiqwest"
+readme = "README.md"
+keywords = ["tor", "http", "client", "arti", "SOCKS"]
+categories = ["network-programming", "http-client"]
+
 
 [dependencies]
 hyper = { version = "1", features = ["full"] }

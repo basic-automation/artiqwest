@@ -11,9 +11,7 @@ pub struct Uri {
 	pub full: String,
 	pub host: String,
 	pub port: u16,
-	pub path: String,
 	pub is_https: bool,
-	pub query: Option<String>,
 }
 
 impl Display for Uri {
@@ -35,8 +33,6 @@ pub fn parse_uri(uri: &str) -> Result<Uri> {
 		_ if is_https => 443,
 		_ => 80,
 	};
-	let path = uri.path().to_string();
-	let query = uri.query().map(std::string::ToString::to_string);
 
-	Ok(Uri { full, host, port, path, is_https, query })
+	Ok(Uri { full, host, port, is_https })
 }

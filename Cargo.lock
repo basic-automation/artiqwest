@@ -182,6 +182,7 @@ dependencies = [
  "hyper-util",
  "lazy_static",
  "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "tokio-native-tls",

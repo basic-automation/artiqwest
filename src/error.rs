@@ -18,6 +18,9 @@ pub enum Error {
 	#[error("HTTP Error: {0}")]
 	Http(#[from] http::Error),
 
+	#[error("Deserialization Error: {0}")]
+	Deserialization(String),
+
 	#[error("Unkown Error: {0}")]
 	Unkown(String),
 }

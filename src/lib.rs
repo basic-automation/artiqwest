@@ -57,15 +57,6 @@ static TOR_CONFIG: LazyLock<TorClientConfig> = LazyLock::new(|| {
 
 static TOR_CLIENT: LazyLock<TokioMutex<Option<TorClient<PreferredRuntime>>>> = LazyLock::new(|| TokioMutex::new(None));
 
-/* lazy_static! {
-	static ref TOR_CONFIG: TorClientConfig = {
-		let mut default_config = TorClientConfigBuilder::default();
-		default_config.address_filter().allow_onion_addrs(true);
-		default_config.build().unwrap()
-	};
-	static ref TOR_CLIENT: TokioMutex<Option<TorClient<PreferredRuntime>>> = TokioMutex::new(None);
-} */
-
 /// Send `GET` request to the specified URI over the TOR network.
 ///
 /// # Example

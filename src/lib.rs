@@ -1,7 +1,7 @@
 #![warn(clippy::pedantic, clippy::nursery, clippy::all, clippy::cargo)]
 #![allow(clippy::multiple_crate_versions, clippy::module_name_repetitions)]
 
-//! # Artiquest
+//! # Artiqwest
 //! Artiquest is a simple HTTP client that routes all requests through the Tor network using the `arti_client` and `hyper`.
 //! It provides two basic primitives: `get` and `post` functions.
 //!

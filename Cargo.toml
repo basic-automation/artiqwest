@@ -21,7 +21,7 @@ hyper-util = { version = "0", features = ["full"] }
 tokio = { version = "1", features = ["full"] }
 tokio-native-tls = "0"
 tracing-subscriber = "0"
-lazy_static = "1"
+#lazy_static = "1"
 tor-rtcompat = "0"
 serde = { version = "1", features = ["derive"] }
 thiserror = "1"

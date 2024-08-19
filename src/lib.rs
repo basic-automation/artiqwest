@@ -25,12 +25,12 @@
 //! ```
 
 use std::collections::HashMap;
+use std::sync::LazyLock;
 
 use anyhow::Result;
 use arti_client::config::TorClientConfigBuilder;
 use arti_client::{TorClient, TorClientConfig};
 use error::Error;
-use lazy_static::lazy_static;
 use make_request::make_request;
 use make_request::MakeRequest;
 pub use response::Response;
@@ -49,14 +49,22 @@ mod streams;
 mod tor_client;
 mod uri;
 
-lazy_static! {
+static TOR_CONFIG: LazyLock<TorClientConfig> = LazyLock::new(|| {
+	let mut default_config = TorClientConfigBuilder::default();
+	default_config.address_filter().allow_onion_addrs(true);
+	default_config.build().unwrap()
+});
+
+static TOR_CLIENT: LazyLock<TokioMutex<Option<TorClient<PreferredRuntime>>>> = LazyLock::new(|| TokioMutex::new(None));
+
+/* lazy_static! {
 	static ref TOR_CONFIG: TorClientConfig = {
 		let mut default_config = TorClientConfigBuilder::default();
 		default_config.address_filter().allow_onion_addrs(true);
 		default_config.build().unwrap()
 	};
 	static ref TOR_CLIENT: TokioMutex<Option<TorClient<PreferredRuntime>>> = TokioMutex::new(None);
-}
+} */
 
 /// Send `GET` request to the specified URI over the TOR network.
 ///

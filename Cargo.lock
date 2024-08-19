@@ -180,7 +180,6 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
- "lazy_static",
  "serde",
  "serde_json",
  "thiserror",

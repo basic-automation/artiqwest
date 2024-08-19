@@ -7,7 +7,7 @@ license = "MIT"
 repository = "https://github.com/basic-automation/artiqwest"
 readme = "README.md"
 keywords = ["tor", "http", "request", "client", "SOCKS"]
-categories = ["network-programming", "http-client"]
+categories = ["network-programming", "web-programming::http-client"]
 
 
 [dependencies]

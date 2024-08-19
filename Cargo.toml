@@ -6,7 +6,7 @@ description = "A simple client for making http request over Tor with Arti."
 license = "MIT"
 repository = "https://github.com/basic-automation/artiqwest"
 readme = "README.md"
-keywords = ["tor", "http", "request", "client", "arti", "SOCKS"]
+keywords = ["tor", "http", "request", "client", "SOCKS"]
 categories = ["network-programming", "http-client"]
 
 

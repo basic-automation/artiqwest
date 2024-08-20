@@ -51,7 +51,7 @@ mod uri;
 
 static TOR_CONFIG: LazyLock<TorClientConfig> = LazyLock::new(|| {
 	let mut default_config = TorClientConfigBuilder::default();
-	default_config.address_filter().allow_onion_addrs(true);
+	default_config.address_filter().allow_onion_addrs(true).allow_local_addrs(true);
 	default_config.build().unwrap()
 });
 

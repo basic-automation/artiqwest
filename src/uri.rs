@@ -12,6 +12,7 @@ pub struct Uri {
 	pub host: String,
 	pub port: u16,
 	pub is_https: bool,
+	pub is_local: bool,
 }
 
 impl Display for Uri {
@@ -34,5 +35,36 @@ pub fn parse_uri(uri: &str) -> Result<Uri> {
 		_ => 80,
 	};
 
-	Ok(Uri { full, host, port, is_https })
+	let is_local = host.contains("localhost");
+
+	Ok(Uri { full, host, port, is_https, is_local })
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_parse_uri() {
+		let uri = "http://localhost:8225/status";
+		let uri = parse_uri(uri).unwrap();
+		assert_eq!(uri.host, "localhost");
+		assert_eq!(uri.port, 8225);
+		assert_eq!(uri.is_https, false);
+		assert_eq!(uri.is_local, true);
+
+		let uri = "https://facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion";
+		let uri = parse_uri(uri).unwrap();
+		assert_eq!(uri.host, "facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion");
+		assert_eq!(uri.port, 443);
+		assert_eq!(uri.is_https, true);
+		assert_eq!(uri.is_local, false);
+
+		let uri = "http://vpns6exmqmg5znqmgxa5c6rgzpt6imy5yzrbsoszovgfipdjypnchpyd.onion/status";
+		let uri = parse_uri(uri).unwrap();
+		assert_eq!(uri.host, "vpns6exmqmg5znqmgxa5c6rgzpt6imy5yzrbsoszovgfipdjypnchpyd.onion");
+		assert_eq!(uri.port, 80);
+		assert_eq!(uri.is_https, false);
+		assert_eq!(uri.is_local, false);
+	}
 }

@@ -21,6 +21,9 @@ pub enum Error {
 	#[error("Deserialization Error: {0}")]
 	Deserialization(String),
 
+	#[error("Reqwest Error: {0}")]
+	Reqwest(String),
+
 	#[error("Unkown Error: {0}")]
 	Unkown(String),
 }

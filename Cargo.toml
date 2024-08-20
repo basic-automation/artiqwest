@@ -25,3 +25,4 @@ tor-rtcompat = { version = "0", features = ["tokio", "native-tls"] }
 serde = { version = "1", features = ["derive"] }                     #lazy_static = "1"
 thiserror = "1"
 serde_json = "1"
+reqwest = "0"

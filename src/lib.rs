@@ -31,8 +31,8 @@ use anyhow::Result;
 use arti_client::config::TorClientConfigBuilder;
 use arti_client::{TorClient, TorClientConfig};
 use error::Error;
-use make_request::make_request;
 use make_request::MakeRequest;
+use make_request::{make_local_request, make_request};
 pub use response::Response;
 pub(crate) use response::{UpstreamRequest, UpstreamResponse};
 use streams::{create_http_stream, https_upgrade};
@@ -51,7 +51,7 @@ mod uri;
 
 static TOR_CONFIG: LazyLock<TorClientConfig> = LazyLock::new(|| {
 	let mut default_config = TorClientConfigBuilder::default();
-	default_config.address_filter().allow_onion_addrs(true).allow_local_addrs(true);
+	default_config.address_filter().allow_onion_addrs(true);
 	default_config.build().unwrap()
 });
 
@@ -79,9 +79,13 @@ static TOR_CLIENT: LazyLock<TokioMutex<Option<TorClient<PreferredRuntime>>>> = L
 /// 6. If the TOR connection is dropped.
 pub async fn get(uri: &str) -> Result<Response> {
 	let uri = parse_uri(uri)?;
-	let stream = create_http_stream(&uri, 5).await?;
-
 	let m_r = MakeRequest { uri: uri.clone(), headers: Option::default(), body: Option::default(), method: hyper::Method::GET, version: hyper::Version::HTTP_2 };
+
+	if uri.is_local {
+		return make_local_request(m_r).await;
+	}
+
+	let stream = create_http_stream(&uri, 5).await?;
 
 	if uri.is_https {
 		let stream = https_upgrade(&uri, stream).await?;
@@ -115,12 +119,15 @@ pub async fn get(uri: &str) -> Result<Response> {
 /// 6. If the TOR connection is dropped.
 pub async fn post(uri: &str, body: &str, headers: Option<Vec<(&str, &str)>>) -> Result<Response> {
 	let uri = parse_uri(uri)?;
-	let stream = create_http_stream(&uri, 5).await?;
-
 	let headers = headers.unwrap_or_default();
 	let headers: HashMap<_, _> = headers.into_iter().collect();
-
 	let m_r = MakeRequest { uri: uri.clone(), headers: Some(headers), body: Some(body.to_string()), method: hyper::Method::POST, version: hyper::Version::HTTP_2 };
+
+	if uri.is_local {
+		return make_local_request(m_r).await;
+	}
+
+	let stream = create_http_stream(&uri, 5).await?;
 
 	if uri.is_https {
 		let stream = https_upgrade(&uri, stream).await?;
@@ -140,11 +147,21 @@ mod tests {
 		println!("body: {}", response);
 		assert!(response.to_string().contains("ok"));
 
-		let response = get("https://www.facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion").await.unwrap();
+		let response = get("https://facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion").await.unwrap();
 		println!("body: {}", response);
 		if !response.to_string().is_empty() {
 			assert!(response.to_string().contains("facebook"));
 		}
+
+		let response = match get("http://localhost:8225/status").await {
+			Ok(r) => r,
+			Err(e) => {
+				println!("error: {}", e);
+				return;
+			}
+		};
+		println!("body: {}", response);
+		assert!(response.to_string().contains("ok"));
 	}
 
 	#[tokio::test]
@@ -158,5 +175,16 @@ mod tests {
 		let body = post("https://echo.free.beeceptor.com", post_body, None).await.unwrap();
 		println!("body: {}", body);
 		assert!(body.to_string().contains("test"));
+
+		let post_body = r#"{"test":"testing"}"#;
+		let response = match post("http://localhost:8225/echo", post_body, None).await {
+			Ok(r) => r,
+			Err(e) => {
+				println!("error: {}", e);
+				return;
+			}
+		};
+		println!("body: {}", response);
+		assert!(response.to_string().contains("test"));
 	}
 }

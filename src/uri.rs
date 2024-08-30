@@ -28,7 +28,7 @@ pub fn parse_uri(uri: &str) -> Result<Uri> {
 	let Some(host) = uri.host() else { bail!(Error::InvalidUri) };
 	let host = host.to_string();
 
-	let is_https = uri.scheme() == Some(&Scheme::HTTPS);
+	let is_https = uri.scheme() == Some(&Scheme::HTTPS) || uri.scheme_str().unwrap().contains("wss");
 	let port = match uri.port_u16() {
 		Some(port) => port,
 		_ if is_https => 443,
@@ -66,5 +66,12 @@ mod tests {
 		assert_eq!(uri.port, 80);
 		assert_eq!(uri.is_https, false);
 		assert_eq!(uri.is_local, false);
+
+		let uri = "wss://localhost:8225/events";
+		let uri = parse_uri(uri).unwrap();
+		assert_eq!(uri.host, "localhost");
+		assert_eq!(uri.port, 8225);
+		assert_eq!(uri.is_https, true);
+		assert_eq!(uri.is_local, true);
 	}
 }

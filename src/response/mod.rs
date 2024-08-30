@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use anyhow::Result;
 use hyper::StatusCode;
+use serde::Serialize;
 pub use upstream::{UpstreamRequest, UpstreamResponse};
 
 use crate::Error;
@@ -9,7 +10,7 @@ use crate::Error;
 mod upstream;
 
 /// Response from the server with the request that was made included.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Response {
 	pub(crate) request: UpstreamRequest,
 	pub(crate) response: UpstreamResponse,

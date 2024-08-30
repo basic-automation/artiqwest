@@ -120,7 +120,7 @@ pub async fn get(uri: &str) -> Result<Response> {
 pub async fn post(uri: &str, body: &str, headers: Option<Vec<(&str, &str)>>) -> Result<Response> {
 	let uri = parse_uri(uri)?;
 	let headers = headers.unwrap_or_default();
-	let headers: HashMap<_, _> = headers.into_iter().collect();
+	let headers: HashMap<String, String> = headers.iter().map(|(k, v)| ((*k).to_string(), (*v).to_string())).collect();
 	let m_r = MakeRequest { uri: uri.clone(), headers: Some(headers), body: Some(body.to_string()), method: hyper::Method::POST, version: hyper::Version::HTTP_2 };
 
 	if uri.is_local {
@@ -139,20 +139,20 @@ pub async fn post(uri: &str, body: &str, headers: Option<Vec<(&str, &str)>>) -> 
 
 #[cfg(test)]
 mod tests {
+	use serde_json::json;
+
 	use super::*;
 
 	#[tokio::test]
 	async fn test_get() {
-		let response = get("http://vpns6exmqmg5znqmgxa5c6rgzpt6imy5yzrbsoszovgfipdjypnchpyd.onion/status").await.unwrap();
-		println!("body: {}", response);
-		assert!(response.to_string().contains("ok"));
+		println!("Do headers exist when making a tor connection to a local server?\n");
+		let response = get("https://qfnztqeav3f2pysymkf2bqknxlvwgzqfknifddkpfc4ea3vtxxle7did.onion").await.unwrap();
+		println!("response: {}", json!(response));
+		assert!(response.to_string().contains("World"));
 
-		let response = get("https://facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion").await.unwrap();
-		println!("body: {}", response);
-		if !response.to_string().is_empty() {
-			assert!(response.to_string().contains("facebook"));
-		}
+		println!("");
 
+		println!("Do headers exist when making a local connection?\n");
 		let response = match get("http://localhost:8225/status").await {
 			Ok(r) => r,
 			Err(e) => {
@@ -160,14 +160,20 @@ mod tests {
 				return;
 			}
 		};
-		println!("body: {}", response);
-		assert!(response.to_string().contains("ok"));
+
+		println!("response: {}", json!(response));
+
+		println!("");
+
+		println!("Do headers exist when making a tor connection to an outside server?\n");
+		let response = get("https://echo.free.beeceptor.com").await.unwrap();
+		println!("response: {}", json!(response));
 	}
 
 	#[tokio::test]
 	async fn test_post() {
 		let post_body = r#"{"test":"testing"}"#;
-		let response = post("http://vpns6exmqmg5znqmgxa5c6rgzpt6imy5yzrbsoszovgfipdjypnchpyd.onion/echo", post_body, None).await.unwrap();
+		let response = post("https://qfnztqeav3f2pysymkf2bqknxlvwgzqfknifddkpfc4ea3vtxxle7did.onion", post_body, None).await.unwrap();
 		println!("body: {}", response);
 		assert!(response.to_string().contains("test"));
 

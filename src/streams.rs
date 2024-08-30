@@ -1,5 +1,8 @@
 use anyhow::{bail, Result};
 use arti_client::DataStream;
+use tokio::io::AsyncRead;
+use tokio::io::AsyncWrite;
+use tokio::net::TcpStream;
 use tokio_native_tls::{native_tls::TlsConnector, TlsStream};
 
 use crate::error::Error;
@@ -50,10 +53,22 @@ pub async fn create_http_stream(uri: &Uri, max_attempts: u32) -> Result<DataStre
 
 	Ok(stream)
 }
+#[allow(dead_code)]
+pub async fn create_local_stream(uri: &Uri) -> Result<TcpStream> {
+	let stream = match tokio::net::TcpStream::connect((uri.host.clone(), uri.port)).await {
+		Ok(stream) => stream,
+		Err(e) => bail!(Error::Unkown(e.to_string())),
+	};
 
-pub async fn https_upgrade(uri: &Uri, stream: DataStream) -> Result<TlsStream<DataStream>> {
+	Ok(stream)
+}
+
+pub async fn https_upgrade<S>(uri: &Uri, stream: S) -> Result<TlsStream<S>>
+where
+	S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
 	let alpn_protocols = vec!["h2", "http/1.1", "http/1.0"];
-	let cx = match TlsConnector::builder().request_alpns(&alpn_protocols).build() {
+	let cx = match TlsConnector::builder().request_alpns(&alpn_protocols).danger_accept_invalid_certs(true).build() {
 		Ok(cx) => cx,
 		Err(e) => bail!(Error::Tls(e)),
 	};

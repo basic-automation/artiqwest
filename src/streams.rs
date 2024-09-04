@@ -53,6 +53,7 @@ pub async fn create_http_stream(uri: &Uri, max_attempts: u32) -> Result<DataStre
 
 	Ok(stream)
 }
+
 #[allow(dead_code)]
 pub async fn create_local_stream(uri: &Uri) -> Result<TcpStream> {
 	let stream = match tokio::net::TcpStream::connect((uri.host.clone(), uri.port)).await {
@@ -67,7 +68,7 @@ pub async fn https_upgrade<S>(uri: &Uri, stream: S) -> Result<TlsStream<S>>
 where
 	S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
-	let alpn_protocols = vec!["h2", "http/1.1", "http/1.0"];
+	let alpn_protocols = vec!["http/1.1", "h2", "webrtc", "h3"];
 	let cx = match TlsConnector::builder().request_alpns(&alpn_protocols).danger_accept_invalid_certs(true).build() {
 		Ok(cx) => cx,
 		Err(e) => bail!(Error::Tls(e)),

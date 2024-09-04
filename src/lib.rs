@@ -146,7 +146,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_get() {
 		println!("Do headers exist when making a tor connection to a local server?\n");
-		let response = get("https://qfnztqeav3f2pysymkf2bqknxlvwgzqfknifddkpfc4ea3vtxxle7did.onion").await.unwrap();
+		let response = get("https://juzv6xmqavx5gvodd7c5bcapxv2wnmom432bkshbvrx6avrq7jsjbxyd.onion").await.unwrap();
 		println!("response: {}", json!(response));
 		assert!(response.to_string().contains("World"));
 
@@ -173,7 +173,7 @@ mod tests {
 	#[tokio::test]
 	async fn test_post() {
 		let post_body = r#"{"test":"testing"}"#;
-		let response = post("https://qfnztqeav3f2pysymkf2bqknxlvwgzqfknifddkpfc4ea3vtxxle7did.onion", post_body, None).await.unwrap();
+		let response = post("https://ydrkehoqxt2q5atkmiyw7gmphvrmp6fkaufvt525cjr4hma3pb75nyid.onion/echo", post_body, None).await.unwrap();
 		println!("body: {}", response);
 		assert!(response.to_string().contains("test"));
 

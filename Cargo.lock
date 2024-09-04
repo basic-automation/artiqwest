@@ -188,6 +188,7 @@ dependencies = [
  "env_logger",
  "futures-channel",
  "futures-util",
+ "h2",
  "http-body-util",
  "hyper 1.4.1",
  "hyper-util",
@@ -200,6 +201,7 @@ dependencies = [
  "tokio-tungstenite",
  "tor-rtcompat",
  "tracing-subscriber",
+ "tungstenite",
  "url 2.5.2",
  "websocket",
 ]

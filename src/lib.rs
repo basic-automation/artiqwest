@@ -29,16 +29,23 @@ use std::sync::LazyLock;
 
 use anyhow::Result;
 use arti_client::config::TorClientConfigBuilder;
+use arti_client::DataStream;
 use arti_client::{TorClient, TorClientConfig};
 use error::Error;
+use futures_util::stream::SplitSink;
+use futures_util::stream::SplitStream;
+use futures_util::StreamExt;
 use make_request::MakeRequest;
 use make_request::{make_local_request, make_request};
 pub use response::Response;
 pub(crate) use response::{UpstreamRequest, UpstreamResponse};
 use streams::{create_http_stream, https_upgrade};
 use tokio::sync::Mutex as TokioMutex;
+use tokio_native_tls::TlsStream;
+use tokio_tungstenite::WebSocketStream;
 use tor_client::get_or_refresh;
 use tor_rtcompat::PreferredRuntime;
+use tungstenite::Message;
 use uri::parse_uri;
 use uri::Uri;
 
@@ -137,15 +144,73 @@ pub async fn post(uri: &str, body: &str, headers: Option<Vec<(&str, &str)>>) -> 
 	}
 }
 
+/// Get a websocket connection to the specified URI over the TOR network.
+///
+/// # Example
+/// ```rust
+/// use artiqwest::ws;
+/// use futures_util::future;
+/// use futures_util::pin_mut;
+/// use futures_util::SinkExt;
+///
+/// #[tokio::main]
+/// async fn main() {
+///     let (mut write, read) = ws("wss://ydrkehoqxt2q5atkmiyw7gmphvrmp6fkaufvt525cjr4hma3pb75nyid.onion/events").await.unwrap();
+///     let write_messages = {
+///         async {
+///             loop {
+///                 write.send(Message::Text("Hello WebSocket".to_string())).await.unwrap();
+///                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+///             }
+///         }
+///     };
+///
+///     let read_messages = {
+///         read.for_each(|message| async {
+///             let data = message.unwrap().into_data();
+///             let text = String::from_utf8(data).unwrap();
+///             println!("Received: {text}");
+///         })
+///     };
+///
+///     pin_mut!(write_messages, read_messages);
+///     future::select(write_messages, read_messages).await;
+/// }
+/// ```
+///
+/// # Errors
+/// 1. If the URI is invalid.
+/// 2. If the stream cannot be created.
+/// 3. If the request cannot be made.
+/// 4. If the request cannot be made over HTTPS.
+/// 5. If handshake with server fails.
+pub async fn ws(uri: &str) -> Result<(SplitSink<WebSocketStream<TlsStream<DataStream>>, Message>, SplitStream<WebSocketStream<TlsStream<DataStream>>>)> {
+	let uri = crate::parse_uri(uri)?;
+	if !uri.is_https {
+		return Err(Error::InvalidUri.into());
+	}
+	let stream = crate::create_http_stream(&uri, 5).await?;
+	let tls_stream = crate::https_upgrade(&uri, stream).await?;
+	let (ws_stream, _) = match tokio_tungstenite::client_async(&uri.to_string(), tls_stream).await {
+		Ok((ws_stream, response)) => (ws_stream, response),
+		Err(e) => return Err(Error::Tungstenite(e).into()),
+	};
+
+	let (write, read) = ws_stream.split();
+	Ok((write, read))
+}
+
 #[cfg(test)]
 mod tests {
+	use futures_util::future;
+	use futures_util::pin_mut;
+	use futures_util::SinkExt;
 	use serde_json::json;
 
 	use super::*;
 
 	#[tokio::test]
 	async fn test_get() {
-		println!("Do headers exist when making a tor connection to a local server?\n");
 		let response = get("https://juzv6xmqavx5gvodd7c5bcapxv2wnmom432bkshbvrx6avrq7jsjbxyd.onion").await.unwrap();
 		println!("response: {}", json!(response));
 		assert!(response.to_string().contains("World"));
@@ -192,5 +257,30 @@ mod tests {
 		};
 		println!("body: {}", response);
 		assert!(response.to_string().contains("test"));
+	}
+
+	#[tokio::test]
+	async fn test_ws() {
+		let (mut write, read) = ws("wss://ydrkehoqxt2q5atkmiyw7gmphvrmp6fkaufvt525cjr4hma3pb75nyid.onion/events").await.unwrap();
+		let write_messages = {
+			async {
+				loop {
+					write.send(Message::Text("Hello WebSocket".to_string())).await.unwrap();
+					tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+				}
+			}
+		};
+
+		let read_messages = {
+			read.for_each(|message| async {
+				let data = message.unwrap().into_data();
+				let text = String::from_utf8(data).unwrap();
+				println!("Received: {text}");
+			})
+		};
+
+		pin_mut!(read_messages, write_messages);
+
+		future::select(read_messages, write_messages).await;
 	}
 }

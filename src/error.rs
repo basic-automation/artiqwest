@@ -24,6 +24,9 @@ pub enum Error {
 	#[error("Reqwest Error: {0}")]
 	Reqwest(String),
 
+	#[error("Tungstenite Error: {0}")]
+	Tungstenite(#[from] tokio_tungstenite::tungstenite::error::Error),
+
 	#[error("Unkown Error: {0}")]
 	Unkown(String),
 }

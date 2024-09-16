@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 
 use anyhow::{bail, Result};
-use futures_util::StreamExt;
-use futures_util::{future, pin_mut, SinkExt};
 use http_body_util::BodyExt;
 use hyper::client::conn::http2::handshake;
 use hyper::header;
@@ -13,8 +11,6 @@ use hyper_util::rt::tokio::TokioExecutor;
 use hyper_util::rt::TokioIo;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
-use tokio_native_tls::native_tls::TlsConnector;
-use tokio_tungstenite::{tungstenite::protocol::Message, Connector};
 
 use crate::Error;
 use crate::Response;
@@ -144,110 +140,9 @@ fn construct_headers(headers: &HashMap<String, String>) -> HeaderMap {
 		header_map.insert(header::CONTENT_TYPE, "text/html; charset=utf-8".parse().unwrap());
 	}
 
-	/* {
-	if !header_map.contains_key(header::CONNECTION) {
-		header_map.insert(header::CONNECTION, "upgrade".parse().unwrap());
-	}
-
 	if !header_map.contains_key(header::UPGRADE) {
-		header_map.insert(header::UPGRADE, "websocket".parse().unwrap());
+		header_map.insert(header::UPGRADE, "HTTP/2.0".parse().unwrap());
 	}
-
-	if !header_map.contains_key(header::SEC_WEBSOCKET_KEY) {
-		header_map.insert(header::SEC_WEBSOCKET_KEY, key.parse().unwrap());
-	}
-
-	if !header_map.contains_key(header::SEC_WEBSOCKET_VERSION) {
-		header_map.insert(header::SEC_WEBSOCKET_VERSION, "13".parse().unwrap());
-	}
-
-	header_map.insert(HeaderName::from_lowercase(b"proxy-connection").unwrap(), "keep-alive".parse().unwrap());
-	}*/
 
 	header_map
-}
-
-#[allow(dead_code)]
-async fn test_tungstenite_web_socket() {
-	std::env::set_var("RUST_LOG", "debug, tokio_tungstenite");
-
-	println!("ws: 1");
-
-	let uri_str = "wss://echo.websocket.org";
-	let uri = crate::parse_uri(uri_str).unwrap();
-
-	println!("uri: {uri:?}");
-	let stream = crate::create_http_stream(&uri, 5).await.unwrap();
-	//let stream = crate::https_upgrade(&uri, stream).await.unwrap();
-
-	println!("ws: 2");
-
-	let alpn_protocols = vec!["http/1.1", "h2", "webrtc", "h3"];
-	let cx = match TlsConnector::builder().request_alpns(&alpn_protocols).danger_accept_invalid_certs(true).build() {
-		Ok(cx) => cx,
-		Err(e) => {
-			println!("Error: {e}");
-			return;
-		}
-	};
-	//let cx = tokio_native_tls::TlsConnector::from(cx);
-
-	let connector = Connector::NativeTls(cx);
-
-	let config = tungstenite::protocol::WebSocketConfig { accept_unmasked_frames: true, ..Default::default() };
-
-	println!("ws: 2.5");
-
-	let (ws_stream, _) = match tokio_tungstenite::client_async_tls_with_config(uri_str, stream, Some(config), Some(connector)).await {
-		Ok((ws_stream, response)) => (ws_stream, response),
-		Err(e) => {
-			println!("Failed to connect: Error: {e}");
-			return;
-		}
-	};
-
-	println!("ws: 3");
-
-	let (mut write, read) = ws_stream.split();
-
-	println!("ws: 4");
-
-	let write_messages = {
-		async {
-			loop {
-				write.send(Message::Text("Hello WebSocket".to_string())).await.unwrap();
-				tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-			}
-		}
-	};
-
-	println!("ws: 5");
-
-	let read_messages = {
-		read.for_each(|message| async {
-			let data = message.unwrap().into_data();
-			let text = String::from_utf8(data).unwrap();
-			println!("Received: {text}");
-		})
-	};
-
-	println!("ws: 6");
-
-	pin_mut!(read_messages, write_messages);
-
-	println!("ws: 7");
-
-	future::select(read_messages, write_messages).await;
-
-	println!("ws: 8");
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[tokio::test]
-	async fn test_ws() {
-		test_tungstenite_web_socket().await;
-	}
 }

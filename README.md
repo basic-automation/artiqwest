@@ -2,10 +2,10 @@
 <br><br>
 ![docs.rs](https://img.shields.io/docsrs/artiqwest?style=for-the-badge) ![Crates.io Total Downloads](https://img.shields.io/crates/d/artiqwest?style=for-the-badge) ![Crates.io License](https://img.shields.io/crates/l/artiqwest?style=for-the-badge)
 <br><br>
-Artiqwest is a simple HTTP client that routes all requests through the Tor network using the `arti_client` and `hyper`.
+Artiqwest is a simple HTTP client that routes *all *(except localhost connects where it fallbacks to [reqwest](https://github.com/seanmonstar/reqwest))* requests through the Tor network using the `arti_client` and `hyper`.
 It provides two basic primitives: `get` and `post`,  functions.
 
-Artiqwest also provides a `ws` function to create a websocket connection to a hidden service. *Currently, websockets only work over tor and are untested over clearnet.*
+Artiqwest also provides a `ws` function to create a websocket connection to a hidden service using [tokio-tungstenite](https://github.com/snapview/tokio-tungstenite). *Currently websockets only work over tor and are untested over clearnet.*
 
 ## Example
 ```rust

@@ -1,5 +1,5 @@
 ![logo](./assets/artiqwest-logo.svg)
-<br>
+<br><br>
 ![docs.rs](https://img.shields.io/docsrs/artiqwest?style=for-the-badge) ![Crates.io Total Downloads](https://img.shields.io/crates/d/artiqwest?style=for-the-badge) ![Crates.io License](https://img.shields.io/crates/l/artiqwest?style=for-the-badge)
 <br><br>
 Artiqwest is a simple HTTP client that routes all requests through the Tor network using the `arti_client` and `hyper`.

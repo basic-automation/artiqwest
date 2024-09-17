@@ -42,10 +42,10 @@ pub(crate) use response::{UpstreamRequest, UpstreamResponse};
 use streams::{create_http_stream, https_upgrade};
 use tokio::sync::Mutex as TokioMutex;
 use tokio_native_tls::TlsStream;
+use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 use tor_client::get_or_refresh;
 use tor_rtcompat::PreferredRuntime;
-use tungstenite::Message;
 use uri::parse_uri;
 use uri::Uri;
 

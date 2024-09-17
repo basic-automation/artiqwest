@@ -178,9 +178,7 @@ dependencies = [
  "anyhow",
  "arti-client",
  "bytes",
- "futures-channel",
  "futures-util",
- "h2",
  "http-body-util",
  "hyper",
  "hyper-util",
@@ -192,8 +190,6 @@ dependencies = [
  "tokio-native-tls",
  "tokio-tungstenite",
  "tor-rtcompat",
- "tungstenite",
- "url",
 ]
 
 [[package]]

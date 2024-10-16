@@ -46,6 +46,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
 use tor_client::get_or_refresh;
 use tor_rtcompat::PreferredRuntime;
+use tracing::{event, span, Level};
 use uri::parse_uri;
 use uri::Uri;
 
@@ -85,6 +86,11 @@ static TOR_CLIENT: LazyLock<TokioMutex<Option<TorClient<PreferredRuntime>>>> = L
 /// 5. If handshake with server fails.
 /// 6. If the TOR connection is dropped.
 pub async fn get(uri: &str) -> Result<Response> {
+	let get_span = span!(Level::INFO, "get");
+	let _guard = get_span.enter();
+
+	event!(Level::INFO, "Making a GET request to {}", uri);
+
 	let uri = parse_uri(uri)?;
 	let m_r = MakeRequest { uri: uri.clone(), headers: Option::default(), body: Option::default(), method: hyper::Method::GET, version: hyper::Version::HTTP_2 };
 
@@ -92,7 +98,14 @@ pub async fn get(uri: &str) -> Result<Response> {
 		return make_local_request(m_r).await;
 	}
 
-	let stream = create_http_stream(&uri, 5).await?;
+	event!(Level::INFO, "Creating a stream to {}", uri.to_string());
+	let stream = match create_http_stream(&uri, 5).await {
+		Ok(s) => s,
+		Err(e) => {
+			event!(Level::ERROR, "Failed to create a stream: {}", e);
+			return Err(e);
+		}
+	};
 
 	if uri.is_https {
 		let stream = https_upgrade(&uri, stream).await?;
@@ -125,6 +138,11 @@ pub async fn get(uri: &str) -> Result<Response> {
 /// 5. If handshake with server fails.
 /// 6. If the TOR connection is dropped.
 pub async fn post(uri: &str, body: &str, headers: Option<Vec<(&str, &str)>>) -> Result<Response> {
+	let post_span = span!(Level::INFO, "post");
+	let _guard = post_span.enter();
+
+	event!(Level::INFO, "Making a POST request to {}", uri);
+
 	let uri = parse_uri(uri)?;
 	let headers = headers.unwrap_or_default();
 	let headers: HashMap<String, String> = headers.iter().map(|(k, v)| ((*k).to_string(), (*v).to_string())).collect();
@@ -185,6 +203,9 @@ pub async fn post(uri: &str, body: &str, headers: Option<Vec<(&str, &str)>>) -> 
 /// 4. If the request cannot be made over HTTPS.
 /// 5. If handshake with server fails.
 pub async fn ws(uri: &str) -> Result<(SplitSink<WebSocketStream<TlsStream<DataStream>>, Message>, SplitStream<WebSocketStream<TlsStream<DataStream>>>)> {
+	let ws_span = span!(Level::INFO, "ws");
+	let _guard = ws_span.enter();
+
 	let uri = crate::parse_uri(uri)?;
 	if !uri.is_https {
 		return Err(Error::InvalidUri.into());
@@ -211,7 +232,10 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_get() {
-		let response = get("https://juzv6xmqavx5gvodd7c5bcapxv2wnmom432bkshbvrx6avrq7jsjbxyd.onion").await.unwrap();
+		let tracing_subscriber = tracing_subscriber::fmt::Subscriber::builder().with_max_level(tracing::Level::INFO).finish();
+		tracing::subscriber::set_global_default(tracing_subscriber).unwrap();
+
+		let response = get("https://zbn3fwwpmf4xrfysoj2tvm6ay5dlxnpunoakdmgvq5mh7lcjpxqijgyd.onion").await.unwrap();
 		println!("response: {}", json!(response));
 		assert!(response.to_string().contains("World"));
 

@@ -3,6 +3,7 @@ use std::fmt::Display;
 use anyhow::{bail, Result};
 use hyper::http::uri::Scheme;
 use hyper::Uri as HyperUri;
+use tracing::{event, span, Level};
 
 use crate::error::Error;
 
@@ -22,13 +23,29 @@ impl Display for Uri {
 }
 
 pub fn parse_uri(uri: &str) -> Result<Uri> {
-	let Ok(uri) = uri.parse::<HyperUri>() else { bail!(Error::InvalidUri) };
+	let parse_uri_span = span!(Level::INFO, "parse_uri");
+	let _guard = parse_uri_span.enter();
+
+	event!(Level::INFO, "Parsing URI: {}", uri);
+
+	let uri = match uri.parse::<HyperUri>() {
+		Ok(uri) => uri,
+		Err(err) => {
+			event!(Level::ERROR, "Invalid URI: {}", err);
+			bail!(Error::InvalidUri)
+		}
+	};
+
 	let full = uri.to_string();
 
-	let Some(host) = uri.host() else { bail!(Error::InvalidUri) };
+	let Some(host) = uri.host() else {
+		event!(Level::ERROR, "Invalid URI: no host found.");
+		bail!(Error::InvalidUri)
+	};
+
 	let host = host.to_string();
 
-	let is_https = uri.scheme() == Some(&Scheme::HTTPS) || uri.scheme_str().unwrap().contains("wss");
+	let is_https = uri.scheme() == Some(&Scheme::HTTPS) || uri.scheme_str().unwrap().contains("wss://");
 	let port = match uri.port_u16() {
 		Some(port) => port,
 		_ if is_https => 443,
@@ -37,6 +54,7 @@ pub fn parse_uri(uri: &str) -> Result<Uri> {
 
 	let is_local = host.contains("localhost");
 
+	event!(Level::INFO, "Successfully parsed URI: {}", full);
 	Ok(Uri { full, host, port, is_https, is_local })
 }
 

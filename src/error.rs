@@ -27,6 +27,9 @@ pub enum Error {
 	#[error("Tungstenite Error: {0}")]
 	Tungstenite(#[from] tokio_tungstenite::tungstenite::error::Error),
 
+	#[error("Header Error: {0}")]
+	Header(String),
+
 	#[error("Unkown Error: {0}")]
 	Unkown(String),
 }

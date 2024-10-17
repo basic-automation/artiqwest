@@ -1,6 +1,6 @@
 ![logo](./assets/artiqwest-logo.svg)
 <br><br>
-![docs.rs](https://img.shields.io/docsrs/artiqwest?style=for-the-badge) ![Crates.io Total Downloads](https://img.shields.io/crates/d/artiqwest?style=for-the-badge) ![Crates.io License](https://img.shields.io/crates/l/artiqwest?style=for-the-badge)
+<a src="https://docs.rs/artiqwest/latest/artiqwest/">![docs.rs](https://img.shields.io/docsrs/artiqwest?style=for-the-badge)</a> <a src="https://crates.io/crates/artiqwest">![Crates.io Total Downloads](https://img.shields.io/crates/d/artiqwest?style=for-the-badge)</a> ![Crates.io License](https://img.shields.io/crates/l/artiqwest?style=for-the-badge)
 <br><br>
 Artiqwest is a simple HTTP client that routes *all *(except localhost connects where it fallbacks to [reqwest](https://github.com/seanmonstar/reqwest))* requests through the Tor network using the `arti_client` and `hyper`.
 It provides two basic primitives: `get` and `post`,  functions.

@@ -45,7 +45,7 @@ pub fn parse_uri(uri: &str) -> Result<Uri> {
 
 	let host = host.to_string();
 
-	let is_https = uri.scheme() == Some(&Scheme::HTTPS) || uri.scheme_str().unwrap().contains("wss://");
+	let is_https = uri.scheme() == Some(&Scheme::HTTPS) || uri.to_string().contains("wss://");
 	let port = match uri.port_u16() {
 		Some(port) => port,
 		_ if is_https => 443,

@@ -285,7 +285,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_ws() {
-		let (mut write, read) = ws("wss://ydrkehoqxt2q5atkmiyw7gmphvrmp6fkaufvt525cjr4hma3pb75nyid.onion/events").await.unwrap();
+		let (mut write, read) = ws("wss://pxfbgtzpodrswbozru2cu6jzzrntdxomdma5sdojkq4i37jdfylidmad.onion/events").await.unwrap();
 		let write_messages = {
 			async {
 				loop {

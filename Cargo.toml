@@ -31,5 +31,11 @@ futures-util = { version = "0.3", default-features = false, features = [
 tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 tracing = "0.1"
 
+uuid = { version = "1.11.0", features = [
+    "v4",                # Lets you generate random UUIDs
+    "fast-rng",          # Use a faster (but still sufficiently random) RNG
+    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+] }
+
 [dev-dependencies]
 tracing-subscriber = "0.3.18"

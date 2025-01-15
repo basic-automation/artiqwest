@@ -11,31 +11,31 @@ categories = ["network-programming", "web-programming::http-client"]
 
 
 [dependencies]
-hyper = { version = "1", features = ["full"] }
-bytes = "1"
-anyhow = "1"
-arti-client = { version = "0", features = ["full", "static"] }
-http-body-util = "0"
-hyper-util = { version = "0", features = ["full"] }
-tokio = { version = "1", features = ["full"] }
-tokio-native-tls = "0"
-tor-rtcompat = { version = "0", features = ["tokio", "native-tls"] }
-serde = { version = "1", features = ["derive"] }
-thiserror = "1"
-serde_json = "1"
-reqwest = "0"
-futures-util = { version = "0", default-features = false, features = [
+hyper = { workspace = true, features = ["full"] }
+bytes = { workspace = true }
+anyhow = { workspace = true }
+arti-client = { workspace = true, features = ["full", "static"] }
+http-body-util = { workspace = true }
+hyper-util = { workspace = true, features = ["full"] }
+tokio = { workspace = true, features = ["full"] }
+tokio-native-tls = { workspace = true }
+tor-rtcompat = { workspace = true, features = ["tokio", "native-tls"] }
+serde = { workspace = true, features = ["derive"] }
+thiserror = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+futures-util = { workspace = true, default-features = false, features = [
         "sink",
         "std",
 ] }
-tokio-tungstenite = { version = "0", features = ["native-tls"] }
-tracing = "0"
+tokio-tungstenite = { workspace = true, features = ["native-tls"] }
+tracing = { workspace = true }
 
-uuid = { version = "1", features = [
+uuid = { workspace = true, features = [
     "v4",                # Lets you generate random UUIDs
     "fast-rng",          # Use a faster (but still sufficiently random) RNG
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
 ] }
 
 [dev-dependencies]
-tracing-subscriber = "0"
+tracing-subscriber = { workspace = true }

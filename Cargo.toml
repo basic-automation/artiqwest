@@ -1,6 +1,6 @@
 [package]
 name = "artiqwest"
-version = "0.1.15"
+version = "0.1.18"
 edition = "2024"
 description = "A simple client for making http request over Tor with Arti."
 license = "MIT"

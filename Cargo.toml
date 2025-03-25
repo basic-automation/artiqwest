@@ -1,7 +1,7 @@
 [package]
 name = "artiqwest"
 version = "0.1.15"
-edition = "2021"
+edition = "2024"
 description = "A simple client for making http request over Tor with Arti."
 license = "MIT"
 repository = "https://github.com/basic-automation/artiqwest"
@@ -11,31 +11,33 @@ categories = ["network-programming", "web-programming::http-client"]
 
 
 [dependencies]
-hyper = { workspace = true, features = ["full"] }
-bytes = { workspace = true }
-anyhow = { workspace = true }
-arti-client = { workspace = true, features = ["full", "static"] }
-http-body-util = { workspace = true }
-hyper-util = { workspace = true, features = ["full"] }
-tokio = { workspace = true, features = ["full"] }
-tokio-native-tls = { workspace = true }
-tor-rtcompat = { workspace = true, features = ["tokio", "native-tls"] }
-serde = { workspace = true, features = ["derive"] }
-thiserror = { workspace = true }
-serde_json = { workspace = true }
-reqwest = { workspace = true }
-futures-util = { workspace = true, default-features = false, features = [
+hyper = { version = "1.6.0", features = ["full"] }
+bytes = "1.10.1"
+anyhow = "1.0.97"
+arti-client = { version = "0.28.0", features = ["full", "static"] }
+http-body-util = "0.1.3"
+hyper-util = { version = "0.1.10", features = ["full"] }
+tokio = { version = "1.44.1", features = ["full"] }
+tokio-native-tls = "0.3.1"
+tor-rtcompat = { version = "0.28.0", features = ["tokio", "native-tls"] }
+serde = { version = "1.0.219", features = ["derive"] }
+thiserror = "2.0.12"
+serde_json = "1.0.140"
+reqwest = "0.12.15"
+
+futures-util = { version = "0.3.31", default-features = false, features = [
         "sink",
         "std",
 ] }
-tokio-tungstenite = { workspace = true, features = ["native-tls"] }
-tracing = { workspace = true }
 
-uuid = { workspace = true, features = [
-    "v4",                # Lets you generate random UUIDs
-    "fast-rng",          # Use a faster (but still sufficiently random) RNG
-    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+tokio-tungstenite = { version = "0.26.2", features = ["native-tls"] }
+tracing = "0.1.41"
+
+uuid = { version = "1.16.0", features = [
+        "v4",                # Lets you generate random UUIDs
+        "fast-rng",          # Use a faster (but still sufficiently random) RNG
+        "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
 ] }
 
 [dev-dependencies]
-tracing-subscriber = { workspace = true }
+tracing-subscriber = "0.3.19"

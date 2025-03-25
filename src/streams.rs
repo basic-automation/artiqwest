@@ -67,7 +67,6 @@ pub async fn create_http_stream(uri: &Uri, max_attempts: u32) -> Result<DataStre
 				bail!(e)
 			}
 		};
-		continue;
 	}
 
 	let Some(stream) = stream else {

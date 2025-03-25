@@ -28,13 +28,13 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use anyhow::Result;
-use arti_client::config::TorClientConfigBuilder;
 use arti_client::DataStream;
+use arti_client::config::TorClientConfigBuilder;
 use arti_client::{TorClient, TorClientConfig};
 use error::Error;
+use futures_util::StreamExt;
 use futures_util::stream::SplitSink;
 use futures_util::stream::SplitStream;
-use futures_util::StreamExt;
 use make_request::MakeRequest;
 use make_request::{make_local_request, make_request};
 pub use response::Response;
@@ -42,13 +42,13 @@ pub(crate) use response::{UpstreamRequest, UpstreamResponse};
 use streams::{create_http_stream, https_upgrade};
 use tokio::sync::Mutex as TokioMutex;
 use tokio_native_tls::TlsStream;
-use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::WebSocketStream;
+use tokio_tungstenite::tungstenite::Message;
 use tor_client::get_or_refresh;
 use tor_rtcompat::PreferredRuntime;
-use tracing::{event, span, Level};
-use uri::parse_uri;
+use tracing::{Level, event, span};
 use uri::Uri;
+use uri::parse_uri;
 use uuid::Uuid;
 
 mod error;
@@ -58,10 +58,10 @@ mod streams;
 mod tor_client;
 mod uri;
 
-static INSTANCE_ID: LazyLock<Uuid> = LazyLock::new(|| { Uuid::new_v4() }); // Initialize TOR_CONFIG here
+static INSTANCE_ID: LazyLock<Uuid> = LazyLock::new(Uuid::new_v4); // Initialize TOR_CONFIG here
 
 static TOR_CONFIG: LazyLock<TorClientConfig> = LazyLock::new(|| {
-        let mut default_config = TorClientConfigBuilder::from_directories("./tor/state/".to_owned() + &INSTANCE_ID.to_string(), "./tor/cache/".to_owned() + &INSTANCE_ID.to_string());
+	let mut default_config = TorClientConfigBuilder::from_directories("./tor/state/".to_owned() + &INSTANCE_ID.to_string(), "./tor/cache/".to_owned() + &INSTANCE_ID.to_string());
 	//let mut default_config = TorClientConfigBuilder::default();
 	default_config.address_filter().allow_onion_addrs(true);
 	default_config.build().unwrap()
@@ -227,9 +227,9 @@ pub async fn ws(uri: &str) -> Result<(SplitSink<WebSocketStream<TlsStream<DataSt
 
 #[cfg(test)]
 mod tests {
+	use futures_util::SinkExt;
 	use futures_util::future;
 	use futures_util::pin_mut;
-	use futures_util::SinkExt;
 	use serde_json::json;
 
 	use super::*;
@@ -293,7 +293,7 @@ mod tests {
 		let write_messages = {
 			async {
 				loop {
-					write.send(Message::Text("Hello WebSocket".to_string())).await.unwrap();
+					write.send(Message::Text("Hello WebSocket".to_string().into())).await.unwrap();
 					tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 				}
 			}
@@ -302,7 +302,7 @@ mod tests {
 		let read_messages = {
 			read.for_each(|message| async {
 				let data = message.unwrap().into_data();
-				let text = String::from_utf8(data).unwrap();
+				let text = String::from_utf8(data.to_vec()).unwrap();
 				println!("Received: {text}");
 			})
 		};

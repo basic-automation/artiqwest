@@ -1,18 +1,18 @@
 use std::collections::HashMap;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use http_body_util::BodyExt;
+use hyper::HeaderMap;
+use hyper::Uri as HyperUri;
 use hyper::client::conn::http2::handshake;
 use hyper::header;
 use hyper::header::HeaderName;
 use hyper::header::HeaderValue;
-use hyper::HeaderMap;
-use hyper::Uri as HyperUri;
-use hyper_util::rt::tokio::TokioExecutor;
 use hyper_util::rt::TokioIo;
+use hyper_util::rt::tokio::TokioExecutor;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
-use tracing::{event, span, Level};
+use tracing::{Level, event, span};
 
 use crate::Error;
 use crate::Response;

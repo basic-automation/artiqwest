@@ -1,15 +1,15 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use arti_client::DataStream;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
-use tokio_native_tls::{native_tls::TlsConnector, TlsStream};
-use tracing::{event, span, Level};
+use tokio_native_tls::{TlsStream, native_tls::TlsConnector};
+use tracing::{Level, event, span};
 
+use crate::TOR_CLIENT;
 use crate::error::Error;
 use crate::get_or_refresh;
 use crate::uri::Uri;
-use crate::TOR_CLIENT;
 
 pub async fn create_http_stream(uri: &Uri, max_attempts: u32) -> Result<DataStream> {
 	let create_http_stream_span = span!(Level::INFO, "create_http_stream");

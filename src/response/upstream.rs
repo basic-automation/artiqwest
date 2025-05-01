@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use bytes::Bytes;
-use serde::ser::SerializeStruct;
 use serde::Serialize;
+use serde::ser::SerializeStruct;
 
 #[derive(Debug, Clone)]
 pub struct UpstreamResponse {

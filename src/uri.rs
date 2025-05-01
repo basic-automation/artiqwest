@@ -1,9 +1,9 @@
 use std::fmt::Display;
 
-use anyhow::{bail, Result};
-use hyper::http::uri::Scheme;
+use anyhow::{Result, bail};
 use hyper::Uri as HyperUri;
-use tracing::{event, span, Level};
+use hyper::http::uri::Scheme;
+use tracing::{Level, event, span};
 
 use crate::error::Error;
 

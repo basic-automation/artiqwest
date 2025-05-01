@@ -236,6 +236,7 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_get() {
+
 		let tracing_subscriber = tracing_subscriber::fmt::Subscriber::builder().with_max_level(tracing::Level::INFO).finish();
 		tracing::subscriber::set_global_default(tracing_subscriber).unwrap();
 

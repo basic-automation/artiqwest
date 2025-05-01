@@ -1,7 +1,7 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use arti_client::TorClient;
 use tor_rtcompat::PreferredRuntime;
-use tracing::{event, span, Level};
+use tracing::{Level, event, span};
 
 use crate::{Error, TOR_CLIENT, TOR_CONFIG};
 

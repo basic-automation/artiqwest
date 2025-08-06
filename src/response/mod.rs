@@ -49,6 +49,25 @@ impl Response {
 		serde_json::from_slice(&self.response.body).map_err(|e| Error::Deserialization(e.to_string()).into())
 	}
 
+	/// Get the response body as a byte slice.
+	/// Returns the response body as a slice of bytes.
+	///
+	/// # Example
+	/// ```rust
+	/// use artiqwest::get;
+	///
+	/// #[tokio::main]
+	/// async fn main() {
+	///     let response = get("http://example.com", None).await.unwrap();
+	///     let body = response.body();
+	///     println!("{}", body);
+	/// }
+	/// ```
+
+	pub fn body(&self) -> &[u8] {
+		&self.response.body
+	}
+
 	/// Get the status code of the response.
 	///
 	/// An HTTP status code (status-code in RFC 7230 et al.).

@@ -1,9 +1,11 @@
 use anyhow::{Result, bail};
 use arti_client::DataStream;
+use arti_client::TorClient;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::net::TcpStream;
 use tokio_native_tls::{TlsStream, native_tls::TlsConnector};
+use tor_rtcompat::PreferredRuntime;
 use tracing::{Level, event, span};
 
 use crate::TOR_CLIENT;
@@ -11,19 +13,23 @@ use crate::error::Error;
 use crate::get_or_refresh;
 use crate::uri::Uri;
 
-pub async fn create_http_stream(uri: &Uri, max_attempts: u32) -> Result<DataStream> {
+pub async fn create_http_stream(uri: &Uri, max_attempts: u32, tor_client: Option<TorClient<PreferredRuntime>>) -> Result<DataStream> {
 	let create_http_stream_span = span!(Level::INFO, "create_http_stream");
 	let _guard = create_http_stream_span.enter();
 
 	let mut attempts = 0;
 	let mut stream: Option<Result<DataStream, arti_client::Error>> = None;
 	let mut error: Option<arti_client::Error> = None;
-	let mut tor_client = match get_or_refresh().await {
-		Ok(tor_client) => tor_client,
-		Err(e) => {
-			event!(Level::ERROR, "Failed to get new the tor client: {}", e);
-			bail!(e)
-		}
+
+	let mut tor_client = match tor_client {
+		Some(client) => client,
+		None => match get_or_refresh().await {
+			Ok(tor_client) => tor_client,
+			Err(e) => {
+				event!(Level::ERROR, "Failed to get new the tor client: {}", e);
+				bail!(e)
+			}
+		},
 	};
 
 	while attempts < max_attempts {
@@ -84,27 +90,16 @@ pub async fn create_http_stream(uri: &Uri, max_attempts: u32) -> Result<DataStre
 	Ok(stream)
 }
 
-#[allow(dead_code)]
-pub async fn create_local_stream(uri: &Uri) -> Result<TcpStream> {
-	let stream = match tokio::net::TcpStream::connect((uri.host.clone(), uri.port)).await {
-		Ok(stream) => stream,
-		Err(e) => bail!(Error::Unkown(e.to_string())),
-	};
-
-	Ok(stream)
-}
-
-pub async fn https_upgrade<S>(uri: &Uri, stream: S) -> Result<TlsStream<S>>
+pub async fn https_upgrade<S>(uri: &Uri, stream: S, alpn: &[&str]) -> Result<TlsStream<S>>
 where
 	S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
 	let https_upgrade_span = span!(Level::INFO, "https_upgrade");
 	let _guard = https_upgrade_span.enter();
 
-	event!(Level::INFO, "Upgrading the stream to HTTPS");
+	event!(Level::INFO, "Upgrading the stream to HTTPS with ALPN: {:?}", alpn);
 
-	let alpn_protocols = vec!["http/1.1", "h2", "webrtc", "h3"];
-	let cx = match TlsConnector::builder().request_alpns(&alpn_protocols).danger_accept_invalid_certs(true).build() {
+	let cx = match TlsConnector::builder().request_alpns(alpn).danger_accept_invalid_certs(true).build() {
 		Ok(cx) => cx,
 		Err(e) => {
 			event!(Level::ERROR, "Failed to create a TLS connector: {}", e);

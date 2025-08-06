@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::net::IpAddr;
 
 use anyhow::{Result, bail};
 use hyper::Uri as HyperUri;
@@ -52,10 +53,32 @@ pub fn parse_uri(uri: &str) -> Result<Uri> {
 		_ => 80,
 	};
 
-	let is_local = host.contains("localhost");
+	let is_local = is_local(&host);
 
 	event!(Level::INFO, "Successfully parsed URI: {}", full);
 	Ok(Uri { full, host, port, is_https, is_local })
+}
+
+pub fn is_local(host: &str) -> bool {
+	let host_lower = host.to_lowercase();
+
+	if host_lower == "localhost" {
+		return true;
+	}
+
+	if let Ok(ip) = host_lower.parse::<IpAddr>() {
+		if ip.is_loopback() {
+			return true;
+		}
+	} else if host_lower.starts_with('[') && host_lower.ends_with(']') {
+		if let Ok(ip) = (&host_lower[1..host_lower.len() - 1]).parse::<IpAddr>() {
+			if ip.is_loopback() {
+				return true;
+			}
+		}
+	}
+
+	false
 }
 
 #[cfg(test)]
@@ -91,5 +114,28 @@ mod tests {
 		assert_eq!(uri.port, 8225);
 		assert_eq!(uri.is_https, true);
 		assert_eq!(uri.is_local, true);
+	}
+
+	#[test]
+	fn test_is_local() {
+		// Loopback hostnames
+		assert!(is_local("localhost"));
+		assert!(is_local("LOCALHOST")); // Case insensitive
+
+		// IPv4 loopback addresses
+		assert!(is_local("127.0.0.1"));
+		assert!(is_local("127.1.2.3")); // Any 127.x.x.x
+
+		// IPv6 loopback addresses
+		assert!(is_local("::1"));
+		assert!(is_local("[::1]"));
+
+		// Non-local addresses
+		assert!(!is_local("example.com"));
+		assert!(!is_local("localhost.com")); // Not exact match
+		assert!(!is_local("192.168.1.1")); // Private, but not loopback
+		assert!(!is_local("8.8.8.8")); // Public
+		assert!(!is_local("[2001:db8::1]")); // Non-loopback IPv6
+		assert!(!is_local("invalid"));
 	}
 }

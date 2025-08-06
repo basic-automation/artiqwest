@@ -29,11 +29,6 @@ pub struct MakeRequest {
 }
 
 impl MakeRequest {
-	#[allow(dead_code)]
-	pub const fn new(uri: Uri, body: Option<String>, headers: Option<HashMap<String, String>>, method: hyper::Method, version: hyper::Version) -> Self {
-		Self { uri, body, headers, method, version }
-	}
-
 	pub fn headers(&self) -> Result<HeaderMap> {
 		let make_request_headers_span = span!(Level::INFO, "artiqwest::MakeRequest::headers");
 		let _guard = make_request_headers_span.enter();

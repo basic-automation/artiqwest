@@ -63,7 +63,6 @@ impl Response {
 	///     println!("{}", body);
 	/// }
 	/// ```
-
 	pub fn body(&self) -> &[u8] {
 		&self.response.body
 	}

@@ -3,7 +3,6 @@ use arti_client::DataStream;
 use arti_client::TorClient;
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
-use tokio::net::TcpStream;
 use tokio_native_tls::{TlsStream, native_tls::TlsConnector};
 use tor_rtcompat::PreferredRuntime;
 use tracing::{Level, event, span};

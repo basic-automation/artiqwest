@@ -75,7 +75,7 @@ pub async fn make_request(request: MakeRequest, stream: impl AsyncRead + AsyncWr
 		request_builder = request_builder.header(key.unwrap(), value.clone());
 	}
 
-	let body = request.body.map_or_else(String::new, |body| body);
+	let body = request.body.unwrap_or_default();
 
 	request_builder = request_builder.header("content-length", body.len().to_string());
 	request_builder = request_builder.version(request.version);
@@ -114,7 +114,7 @@ pub async fn make_local_request(request: MakeRequest) -> Result<Response> {
 	let make_local_request_span = span!(Level::INFO, "make_local_request");
 	let _guard = make_local_request_span.enter();
 
-	let body = request.body.map_or_else(String::new, |body| body);
+	let body = request.body.unwrap_or_default();
 	let headers = match construct_headers(&request.headers.unwrap_or_default()) {
 		Ok(headers) => headers,
 		Err(e) => {

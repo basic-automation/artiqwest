@@ -254,7 +254,7 @@ async fn ws_local(uri: &Uri) -> Result<(Box<dyn futures_util::Sink<Message, Erro
 	// This handles the HTTP upgrade and WebSocket handshake automatically
 	let url = uri.to_string();
 
-	let (ws_stream, _) = tokio_tungstenite::connect_async(&url).await.map_err(|e| Error::Tungstenite(e))?;
+	let (ws_stream, _) = tokio_tungstenite::connect_async(&url).await.map_err(Error::Tungstenite)?;
 
 	let (write, read) = ws_stream.split();
 	Ok((Box::new(write), Box::new(read)))
@@ -291,7 +291,7 @@ mod tests {
 		// test onion get
 		println!("Testing onion get request");
 		let onion_name = create_onyums_server().await;
-		println!("Onion address: {}", onion_name);
+		println!("Onion address: {onion_name}");
 
 		let response = get(&format!("https://{onion_name}"), None).await.unwrap();
 		println!("response: {}", json!(response));
@@ -300,7 +300,7 @@ mod tests {
 		// test local get
 		println!("Testing local get request");
 		let local_server = spawn_axum_server().await;
-		println!("Local server address: {}", local_server);
+		println!("Local server address: {local_server}");
 
 		let response = get(&format!("http://{local_server}/"), None).await.unwrap();
 		println!("response: {}", json!(response));
@@ -323,28 +323,28 @@ mod tests {
 		// test onion post
 		println!("Testing onion post request");
 		let onion_name = create_onyums_server().await;
-		println!("Onion address: {}", onion_name);
+		println!("Onion address: {onion_name}");
 
 		let post_body = r#"{"test":"testing"}"#;
 		let response = post(&format!("https://{onion_name}/echo"), post_body, None, None).await.unwrap();
-		println!("body: {}", response);
+		println!("body: {response}");
 		assert!(response.to_string().contains("test"));
 
 		// test local post
 		println!("Testing local post request");
 		let local_server = spawn_axum_server().await;
-		println!("Local server address: {}", local_server);
+		println!("Local server address: {local_server}");
 
 		let post_body = r#"{"test":"testing"}"#;
 		let response = post(&format!("http://{local_server}/echo"), post_body, None, None).await.unwrap();
-		println!("body: {}", response);
+		println!("body: {response}");
 		assert!(response.to_string().contains("test"));
 
 		// test external post
 		println!("Testing external post request");
 		let post_body = r#"{"test":"testing"}"#;
 		let response = post("https://httpbin.org/post", post_body, None, None).await.unwrap();
-		println!("body: {}", response);
+		println!("body: {response}");
 		assert!(response.to_string().contains("test"));
 	}
 
@@ -357,7 +357,7 @@ mod tests {
 		// test onion websocket
 		println!("Testing onion websocket");
 		let onion_name = create_onyums_server().await;
-		println!("Onion address: {}", onion_name);
+		println!("Onion address: {onion_name}");
 
 		let (mut write, mut read) = ws(&format!("wss://{onion_name}/events"), None).await.unwrap();
 		println!("WebSocket connection established successfully");
@@ -365,8 +365,8 @@ mod tests {
 		let write_messages = async {
 			let mut sent = 0;
 			for i in 1..=5 {
-				write.send(Message::Text(format!("Hello WebSocket #{}", i).into())).await.unwrap();
-				println!("Sending message {}: Hello WebSocket #{}", i, i);
+				write.send(Message::Text(format!("Hello WebSocket #{i}").into())).await.unwrap();
+				println!("Sending message {i}: Hello WebSocket #{i}");
 				sent += 1;
 				tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 			}
@@ -392,17 +392,17 @@ mod tests {
 		};
 
 		let (sent_count, received_count) = tokio::join!(write_messages, read_messages);
-		println!("Finished sending {} messages", sent_count);
-		println!("Finished receiving {} messages", received_count);
+		println!("Finished sending {sent_count} messages");
+		println!("Finished receiving {received_count} messages");
 
 		// test local websocket
 		println!("Testing local websocket");
 		let local_server = spawn_axum_server_for_ws().await;
-		println!("Local server address: {}", local_server);
+		println!("Local server address: {local_server}");
 
 		// Verify HTTP endpoint works first
 		let client = reqwest::Client::new();
-		let response = client.get(&format!("http://{local_server}/")).send().await.unwrap();
+		let response = client.get(format!("http://{local_server}/")).send().await.unwrap();
 		assert!(response.status().is_success());
 		println!("HTTP endpoint verified");
 
@@ -413,8 +413,8 @@ mod tests {
 		let write_messages = async {
 			let mut sent = 0;
 			for i in 1..=5 {
-				write.send(Message::Text(format!("Hello WebSocket #{}", i).into())).await.unwrap();
-				println!("Sending message {}: Hello WebSocket #{}", i, i);
+				write.send(Message::Text(format!("Hello WebSocket #{i}").into())).await.unwrap();
+				println!("Sending message {i}: Hello WebSocket #{i}");
 				sent += 1;
 				tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 			}
@@ -440,8 +440,8 @@ mod tests {
 		};
 
 		let (sent_count, received_count) = tokio::join!(write_messages, read_messages);
-		println!("Finished sending {} messages", sent_count);
-		println!("Finished receiving {} messages", received_count);
+		println!("Finished sending {sent_count} messages");
+		println!("Finished receiving {received_count} messages");
 
 		// test external websocket
 		println!("Testing external websocket");
@@ -459,16 +459,16 @@ mod tests {
 				println!("Starting to send messages...");
 				while start_time.elapsed() < duration {
 					count += 1;
-					let msg = format!("Hello WebSocket #{}", count);
-					println!("Sending message {}: {}", count, msg);
+					let msg = format!("Hello WebSocket #{count}");
+					println!("Sending message {count}: {msg}");
 
 					if write.send(Message::Text(msg.into())).await.is_err() {
-						println!("Failed to send message {}", count);
+						println!("Failed to send message {count}");
 						break;
 					}
 					tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 				}
-				println!("Finished sending {} messages after 5 seconds", count);
+				println!("Finished sending {count} messages after 5 seconds");
 				count
 			}
 		};
@@ -487,28 +487,28 @@ mod tests {
 							count += 1;
 							let data = message.into_data();
 							let text = String::from_utf8(data.to_vec()).unwrap_or_else(|_| "Invalid UTF-8".to_string());
-							println!("Received message {}: {}", count, text);
+							println!("Received message {count}: {text}");
 						}
 						Err(e) => {
-							println!("Error receiving message: {}", e);
+							println!("Error receiving message: {e}");
 							break;
 						}
 					}
 				}
-				println!("Finished receiving {} messages", count);
+				println!("Finished receiving {count} messages");
 				count
 			}
 		};
 
 		let (write_count, read_count) = tokio::join!(write_messages, read_messages);
-		println!("Finished sending {} messages", write_count);
-		println!("Finished receiving {} messages", read_count);
+		println!("Finished sending {write_count} messages");
+		println!("Finished receiving {read_count} messages");
 	}
 
 	async fn create_onyums_server() -> String {
 		// spawn an onyums server on a new thread and return the onion address
 		tokio::spawn(async {
-			serve(create_router().await, "my_onion").await.unwrap();
+			serve(create_router(), "my_onion").await.unwrap();
 		});
 
 		let mut onion_name = String::new();
@@ -524,11 +524,11 @@ mod tests {
 	async fn spawn_axum_server() -> String {
 		// Use updated rand API and fix ownership issue
 		let port = rand::rng().random_range(1024..=65535);
-		let address = format!("127.0.0.1:{}", port);
+		let address = format!("127.0.0.1:{port}");
 		let address_clone = address.clone(); // Clone the address for the async block
 		tokio::spawn(async move {
 			let listener = tokio::net::TcpListener::bind(address_clone).await.unwrap();
-			axum_serve(listener, create_router().await).await.unwrap();
+			axum_serve(listener, create_router()).await.unwrap();
 		});
 		// Add a short delay to ensure the server is listening
 		tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -538,19 +538,19 @@ mod tests {
 	async fn spawn_axum_server_for_ws() -> String {
 		// Use updated rand API and fix ownership issue
 		let port = rand::rng().random_range(1024..=65535);
-		let address = format!("127.0.0.1:{}", port);
-		println!("Starting test server on {}", address);
+		let address = format!("127.0.0.1:{port}");
+		println!("Starting test server on {address}");
 		let address_clone = address.clone(); // Clone the address for the async block
 		tokio::spawn(async move {
 			let listener = tokio::net::TcpListener::bind(&address_clone).await.unwrap();
-			println!("Test server listening on {}", address_clone); // Use address_clone here instead of address
-			axum_serve(listener, create_router().await).await.unwrap();
+			println!("Test server listening on {address_clone}"); // Use address_clone here instead of address
+			axum_serve(listener, create_router()).await.unwrap();
 		});
 		tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
 		address // Now we can return the original address
 	}
 
-	async fn create_router() -> Router {
+	fn create_router() -> Router {
 		// get `/` -> "Hello, World!"
 		// post `/echo` -> echo the request body
 		Router::new().route("/", axum_get(|| async { "Hello, World!" })).route("/echo", axum_post(|body: String| async move { body })).route("/events", axum_get(ws_handler))
@@ -568,7 +568,7 @@ mod tests {
 			let (mut sender, mut receiver) = socket.split();
 			while let Some(Ok(msg)) = receiver.next().await {
 				if let Err(e) = sender.send(msg).await {
-					println!("Error sending message: {}", e);
+					println!("Error sending message: {e}");
 					break;
 				}
 			}

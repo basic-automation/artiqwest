@@ -70,13 +70,11 @@ pub fn is_local(host: &str) -> bool {
 		if ip.is_loopback() {
 			return true;
 		}
-	} else if host_lower.starts_with('[') && host_lower.ends_with(']') {
-		if let Ok(ip) = (&host_lower[1..host_lower.len() - 1]).parse::<IpAddr>() {
-			if ip.is_loopback() {
+	} else if host_lower.starts_with('[') && host_lower.ends_with(']')
+		&& let Ok(ip) = host_lower[1..host_lower.len() - 1].parse::<IpAddr>()
+			&& ip.is_loopback() {
 				return true;
 			}
-		}
-	}
 
 	false
 }
@@ -91,29 +89,29 @@ mod tests {
 		let uri = parse_uri(uri).unwrap();
 		assert_eq!(uri.host, "localhost");
 		assert_eq!(uri.port, 8225);
-		assert_eq!(uri.is_https, false);
-		assert_eq!(uri.is_local, true);
+		assert!(!uri.is_https);
+		assert!(uri.is_local);
 
 		let uri = "https://facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion";
 		let uri = parse_uri(uri).unwrap();
 		assert_eq!(uri.host, "facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion");
 		assert_eq!(uri.port, 443);
-		assert_eq!(uri.is_https, true);
-		assert_eq!(uri.is_local, false);
+		assert!(uri.is_https);
+		assert!(!uri.is_local);
 
 		let uri = "http://vpns6exmqmg5znqmgxa5c6rgzpt6imy5yzrbsoszovgfipdjypnchpyd.onion/status";
 		let uri = parse_uri(uri).unwrap();
 		assert_eq!(uri.host, "vpns6exmqmg5znqmgxa5c6rgzpt6imy5yzrbsoszovgfipdjypnchpyd.onion");
 		assert_eq!(uri.port, 80);
-		assert_eq!(uri.is_https, false);
-		assert_eq!(uri.is_local, false);
+		assert!(!uri.is_https);
+		assert!(!uri.is_local);
 
 		let uri = "wss://localhost:8225/events";
 		let uri = parse_uri(uri).unwrap();
 		assert_eq!(uri.host, "localhost");
 		assert_eq!(uri.port, 8225);
-		assert_eq!(uri.is_https, true);
-		assert_eq!(uri.is_local, true);
+		assert!(uri.is_https);
+		assert!(uri.is_local);
 	}
 
 	#[test]

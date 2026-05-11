@@ -1,9 +1,9 @@
 use anyhow::{Result, bail};
-use arti_client::TorClient;
+use arti_client::{TorClient, TorClientConfig};
 use tor_rtcompat::PreferredRuntime;
 use tracing::{Level, event, span};
 
-use crate::{Error, TOR_CLIENT, TOR_CONFIG};
+use crate::{Error, TOR_CLIENT};
 
 pub async fn get_or_refresh() -> Result<TorClient<PreferredRuntime>> {
 	let get_or_refresh_span = span!(Level::INFO, "get_or_refresh");
@@ -16,7 +16,7 @@ pub async fn get_or_refresh() -> Result<TorClient<PreferredRuntime>> {
 	let tor_client = if let Some(ref tor_client) = t_c {
 		tor_client.clone()
 	} else {
-		let tor_client = match TorClient::create_bootstrapped(TOR_CONFIG.clone()).await {
+		let tor_client = match TorClient::create_bootstrapped(TorClientConfig::default()).await {
 			Ok(tor_client) => tor_client,
 			Err(e) => {
 				event!(Level::ERROR, "Failed to create a tor client: {}", e);

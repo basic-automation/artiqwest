@@ -28,8 +28,7 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use anyhow::{Result, bail};
-use arti_client::config::TorClientConfigBuilder;
-use arti_client::{TorClient, TorClientConfig};
+use arti_client::TorClient;
 use error::Error;
 use futures_util::StreamExt;
 use make_request::MakeRequest;
@@ -44,7 +43,6 @@ use tor_rtcompat::PreferredRuntime;
 use tracing::{Level, event, span};
 use uri::Uri;
 use uri::parse_uri;
-use uuid::Uuid;
 
 mod error;
 mod make_request;
@@ -52,15 +50,6 @@ mod response;
 mod streams;
 mod tor_client;
 mod uri;
-
-static INSTANCE_ID: LazyLock<Uuid> = LazyLock::new(Uuid::new_v4); // Initialize TOR_CONFIG here
-
-static TOR_CONFIG: LazyLock<TorClientConfig> = LazyLock::new(|| {
-	let mut default_config = TorClientConfigBuilder::from_directories("./tor/state/".to_owned() + &INSTANCE_ID.to_string(), "./tor/cache/".to_owned() + &INSTANCE_ID.to_string());
-	//let mut default_config = TorClientConfigBuilder::default();
-	default_config.address_filter().allow_onion_addrs(true);
-	default_config.build().unwrap()
-});
 
 static TOR_CLIENT: LazyLock<TokioMutex<Option<TorClient<PreferredRuntime>>>> = LazyLock::new(|| TokioMutex::new(None));
 

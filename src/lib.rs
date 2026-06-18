@@ -560,7 +560,7 @@ mod tests {
 			println!("Test server listening on {address_clone}"); // Use address_clone here instead of address
 			axum_serve(listener, create_router()).await.unwrap();
 		});
-		tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+		tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
 		address // Now we can return the original address
 	}
 

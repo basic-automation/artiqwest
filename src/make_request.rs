@@ -4,7 +4,7 @@ use anyhow::{Result, bail};
 use http_body_util::BodyExt;
 use hyper::HeaderMap;
 use hyper::Uri as HyperUri;
-use hyper::client::conn::http2::handshake;
+use hyper::client::conn::{http1, http2};
 use hyper::header;
 use hyper::header::HeaderName;
 use hyper::header::HeaderValue;
@@ -46,21 +46,6 @@ pub async fn make_request(request: MakeRequest, stream: impl AsyncRead + AsyncWr
 	let make_request_span = span!(Level::INFO, "make_request");
 	let _guard = make_request_span.enter();
 
-	let executor = TokioExecutor::new();
-	let (mut sender, connection) = match handshake(executor, TokioIo::new(stream)).await {
-		Ok((sender, connection)) => (sender, connection),
-		Err(e) => {
-			event!(Level::ERROR, "Failed to handshake with the server: {}", e);
-			bail!(Error::Hyper(e))
-		}
-	};
-
-	tokio::task::spawn(async move {
-		if let Err(e) = connection.await {
-			event!(Level::ERROR, "Failed to establish connection: {}", e);
-		}
-	});
-
 	let mut request_builder = hyper::Request::builder().method(request.method.clone()).uri(request.uri.to_string()).version(request.version);
 
 	let request_headers = match request.headers() {
@@ -79,6 +64,14 @@ pub async fn make_request(request: MakeRequest, stream: impl AsyncRead + AsyncWr
 
 	request_builder = request_builder.header("content-length", body.len().to_string());
 	request_builder = request_builder.version(request.version);
+
+	// HTTP/2 derives the `:authority` pseudo-header from the URI, but HTTP/1.1
+	// needs an explicit `Host` header. Add one when talking HTTP/1.1 and the
+	// caller hasn't supplied it.
+	if request.version != hyper::Version::HTTP_2 && !request_builder.headers_ref().is_some_and(|h| h.contains_key(header::HOST)) {
+		request_builder = request_builder.header(header::HOST, request.uri.host.clone());
+	}
+
 	let request_builder = match request_builder.body(body.clone()) {
 		Ok(request_builder) => request_builder,
 		Err(e) => {
@@ -89,11 +82,54 @@ pub async fn make_request(request: MakeRequest, stream: impl AsyncRead + AsyncWr
 
 	let upstream_request = UpstreamRequest { body, headers: request_builder.headers().clone(), method: request_builder.method().clone(), uri: request_builder.uri().clone(), version: request_builder.version() };
 
-	let response = match sender.send_request(request_builder).await {
-		Ok(response) => response,
-		Err(e) => {
-			event!(Level::ERROR, "Failed to send request: {}", e);
-			bail!(Error::Hyper(e))
+	// Dispatch over whichever protocol the TLS layer (ALPN) actually negotiated.
+	// Forcing HTTP/2 onto an HTTP/1.1 connection makes the h2 framer parse the
+	// `HTTP/1.1 ...` response text as frames, producing intermittent
+	// "frame with invalid size" errors.
+	let response = if request.version == hyper::Version::HTTP_2 {
+		let executor = TokioExecutor::new();
+		let (mut sender, connection) = match http2::handshake(executor, TokioIo::new(stream)).await {
+			Ok((sender, connection)) => (sender, connection),
+			Err(e) => {
+				event!(Level::ERROR, "Failed to handshake with the server: {}", e);
+				bail!(Error::Hyper(e))
+			}
+		};
+
+		tokio::task::spawn(async move {
+			if let Err(e) = connection.await {
+				event!(Level::ERROR, "Failed to establish connection: {}", e);
+			}
+		});
+
+		match sender.send_request(request_builder).await {
+			Ok(response) => response,
+			Err(e) => {
+				event!(Level::ERROR, "Failed to send request: {}", e);
+				bail!(Error::Hyper(e))
+			}
+		}
+	} else {
+		let (mut sender, connection) = match http1::handshake(TokioIo::new(stream)).await {
+			Ok((sender, connection)) => (sender, connection),
+			Err(e) => {
+				event!(Level::ERROR, "Failed to handshake with the server: {}", e);
+				bail!(Error::Hyper(e))
+			}
+		};
+
+		tokio::task::spawn(async move {
+			if let Err(e) = connection.await {
+				event!(Level::ERROR, "Failed to establish connection: {}", e);
+			}
+		});
+
+		match sender.send_request(request_builder).await {
+			Ok(response) => response,
+			Err(e) => {
+				event!(Level::ERROR, "Failed to send request: {}", e);
+				bail!(Error::Hyper(e))
+			}
 		}
 	};
 

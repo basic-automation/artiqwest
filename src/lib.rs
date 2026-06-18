@@ -13,7 +13,7 @@
 //! #[tokio::main]
 //! async fn main() {
 //!         // Make a GET request to httpbin.org
-//!         let response = get("https://httpbin.org/get", None).await.unwrap();
+//!         let response = get("https://httpbin.org/get", None, None).await.unwrap();
 //!         assert_eq!(response.status(), 200);
 //!
 //!         // Make a POST request to a hidden service
@@ -25,11 +25,10 @@
 //! ```
 
 use std::collections::HashMap;
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use anyhow::{Result, bail};
-use arti_client::config::TorClientConfigBuilder;
-use arti_client::{TorClient, TorClientConfig};
+use arti_client::TorClient;
 use error::Error;
 use futures_util::StreamExt;
 use make_request::MakeRequest;
@@ -44,7 +43,6 @@ use tor_rtcompat::PreferredRuntime;
 use tracing::{Level, event, span};
 use uri::Uri;
 use uri::parse_uri;
-use uuid::Uuid;
 
 mod error;
 mod make_request;
@@ -53,16 +51,18 @@ mod streams;
 mod tor_client;
 mod uri;
 
-static INSTANCE_ID: LazyLock<Uuid> = LazyLock::new(Uuid::new_v4); // Initialize TOR_CONFIG here
+static TOR_CLIENT: LazyLock<TokioMutex<Option<Arc<TorClient<PreferredRuntime>>>>> = LazyLock::new(|| TokioMutex::new(None));
 
-static TOR_CONFIG: LazyLock<TorClientConfig> = LazyLock::new(|| {
-	let mut default_config = TorClientConfigBuilder::from_directories("./tor/state/".to_owned() + &INSTANCE_ID.to_string(), "./tor/cache/".to_owned() + &INSTANCE_ID.to_string());
-	//let mut default_config = TorClientConfigBuilder::default();
-	default_config.address_filter().allow_onion_addrs(true);
-	default_config.build().unwrap()
-});
-
-static TOR_CLIENT: LazyLock<TokioMutex<Option<TorClient<PreferredRuntime>>>> = LazyLock::new(|| TokioMutex::new(None));
+/// Map the ALPN protocol negotiated during the TLS handshake to the HTTP
+/// version to speak. Falls back to HTTP/1.1 when the server did not negotiate
+/// `h2` (or sent no ALPN at all), since forcing HTTP/2 onto an HTTP/1.1
+/// connection corrupts the response framing.
+fn negotiated_http_version(stream: &tokio_native_tls::TlsStream<arti_client::DataStream>) -> hyper::Version {
+	match stream.get_ref().negotiated_alpn() {
+		Ok(Some(alpn)) if alpn.as_slice() == b"h2" => hyper::Version::HTTP_2,
+		_ => hyper::Version::HTTP_11,
+	}
+}
 
 /// Send `GET` request to the specified URI over the TOR network.
 ///
@@ -72,7 +72,7 @@ static TOR_CLIENT: LazyLock<TokioMutex<Option<TorClient<PreferredRuntime>>>> = L
 ///
 /// #[tokio::main]
 /// async fn main() {
-///         let response = get("https://httpbin.org/get", None).await.unwrap();
+///         let response = get("https://httpbin.org/get", None, None).await.unwrap();
 ///         assert!(response.status().is_success());
 /// }
 /// ```
@@ -84,14 +84,16 @@ static TOR_CLIENT: LazyLock<TokioMutex<Option<TorClient<PreferredRuntime>>>> = L
 /// 4. If the request cannot be made over HTTPS.
 /// 5. If handshake with server fails.
 /// 6. If the TOR connection is dropped.
-pub async fn get(uri: &str, existing_client: Option<TorClient<PreferredRuntime>>) -> Result<Response> {
+pub async fn get(uri: &str, headers: Option<Vec<(&str, &str)>>, existing_client: Option<Arc<TorClient<PreferredRuntime>>>) -> Result<Response> {
 	let get_span = span!(Level::INFO, "get");
 	let _guard = get_span.enter();
 
 	event!(Level::INFO, "Making a GET request to {}", uri);
 
 	let uri = parse_uri(uri)?;
-	let m_r = MakeRequest { uri: uri.clone(), headers: Option::default(), body: Option::default(), method: hyper::Method::GET, version: hyper::Version::HTTP_2 };
+	let headers = headers.unwrap_or_default();
+	let headers: HashMap<String, String> = headers.iter().map(|(k, v)| ((*k).to_string(), (*v).to_string())).collect();
+	let mut m_r = MakeRequest { uri: uri.clone(), headers: Some(headers), body: Option::default(), method: hyper::Method::GET, version: hyper::Version::HTTP_2 };
 
 	if uri.is_local {
 		return make_local_request(m_r).await;
@@ -108,8 +110,10 @@ pub async fn get(uri: &str, existing_client: Option<TorClient<PreferredRuntime>>
 
 	if uri.is_https {
 		let stream = https_upgrade(&uri, stream, &["h2", "http/1.1"]).await?;
+		m_r.version = negotiated_http_version(&stream);
 		make_request(m_r, stream).await
 	} else {
+		m_r.version = hyper::Version::HTTP_11;
 		make_request(m_r, stream).await
 	}
 }
@@ -136,7 +140,7 @@ pub async fn get(uri: &str, existing_client: Option<TorClient<PreferredRuntime>>
 /// 4. If the request cannot be made over HTTPS.
 /// 5. If handshake with server fails.
 /// 6. If the TOR connection is dropped.
-pub async fn post(uri: &str, body: &str, headers: Option<Vec<(&str, &str)>>, existing_client: Option<TorClient<PreferredRuntime>>) -> Result<Response> {
+pub async fn post(uri: &str, body: &str, headers: Option<Vec<(&str, &str)>>, existing_client: Option<Arc<TorClient<PreferredRuntime>>>) -> Result<Response> {
 	let post_span = span!(Level::INFO, "post");
 	let _guard = post_span.enter();
 
@@ -145,7 +149,7 @@ pub async fn post(uri: &str, body: &str, headers: Option<Vec<(&str, &str)>>, exi
 	let uri = parse_uri(uri)?;
 	let headers = headers.unwrap_or_default();
 	let headers: HashMap<String, String> = headers.iter().map(|(k, v)| ((*k).to_string(), (*v).to_string())).collect();
-	let m_r = MakeRequest { uri: uri.clone(), headers: Some(headers), body: Some(body.to_string()), method: hyper::Method::POST, version: hyper::Version::HTTP_2 };
+	let mut m_r = MakeRequest { uri: uri.clone(), headers: Some(headers), body: Some(body.to_string()), method: hyper::Method::POST, version: hyper::Version::HTTP_2 };
 
 	if uri.is_local {
 		return make_local_request(m_r).await;
@@ -155,8 +159,10 @@ pub async fn post(uri: &str, body: &str, headers: Option<Vec<(&str, &str)>>, exi
 
 	if uri.is_https {
 		let stream = https_upgrade(&uri, stream, &["h2", "http/1.1"]).await?;
+		m_r.version = negotiated_http_version(&stream);
 		make_request(m_r, stream).await
 	} else {
+		m_r.version = hyper::Version::HTTP_11;
 		make_request(m_r, stream).await
 	}
 }
@@ -210,7 +216,7 @@ pub async fn post(uri: &str, body: &str, headers: Option<Vec<(&str, &str)>>, exi
 /// 3. If the request cannot be made.
 /// 4. If the request cannot be made over HTTPS.
 /// 5. If handshake with server fails.
-pub async fn ws(uri: &str, existing_client: Option<TorClient<PreferredRuntime>>) -> Result<(Box<dyn futures_util::Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Send + Unpin>, Box<dyn futures_util::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Send + Unpin>)> {
+pub async fn ws(uri: &str, existing_client: Option<Arc<TorClient<PreferredRuntime>>>) -> Result<(Box<dyn futures_util::Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Send + Unpin>, Box<dyn futures_util::Stream<Item = Result<Message, tokio_tungstenite::tungstenite::Error>> + Send + Unpin>)> {
 	let ws_span = span!(Level::INFO, "ws");
 	let _guard = ws_span.enter();
 
@@ -275,7 +281,7 @@ mod tests {
 	use onyums::Router;
 	use onyums::get_onion_name;
 	use onyums::serve;
-	use rand::Rng; // Keep this import
+	use rand::RngExt; // provides `random_range` in rand 0.10
 	use serde_json::json;
 	use serial_test::serial; // Add this import
 	use tokio_tungstenite::tungstenite::Message;
@@ -293,7 +299,7 @@ mod tests {
 		let onion_name = create_onyums_server().await;
 		println!("Onion address: {onion_name}");
 
-		let response = get(&format!("https://{onion_name}"), None).await.unwrap();
+		let response = get(&format!("https://{onion_name}"), None, None).await.unwrap();
 		println!("response: {}", json!(response));
 		assert!(response.to_string().contains("World"));
 
@@ -302,14 +308,14 @@ mod tests {
 		let local_server = spawn_axum_server().await;
 		println!("Local server address: {local_server}");
 
-		let response = get(&format!("http://{local_server}/"), None).await.unwrap();
+		let response = get(&format!("http://{local_server}/"), None, None).await.unwrap();
 		println!("response: {}", json!(response));
 		assert!(response.to_string().contains("World"));
 
 		// test external get
 		println!("Testing external get request");
 
-		let response = get("https://httpbin.org/get", None).await.unwrap();
+		let response = get("https://httpbin.org/get", None, None).await.unwrap();
 		println!("response: {}", json!(response));
 		assert!(response.status().is_success());
 	}
@@ -506,6 +512,11 @@ mod tests {
 	}
 
 	async fn create_onyums_server() -> String {
+		// rustls 0.23 can't auto-pick a crypto provider when both `ring` and
+		// `aws-lc-rs` are in the dependency tree, so install one explicitly
+		// before onyums builds its TLS config. Idempotent across the serial tests.
+		let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
 		// spawn an onyums server on a new thread and return the onion address
 		tokio::spawn(async {
 			serve(create_router(), "my_onion").await.unwrap();

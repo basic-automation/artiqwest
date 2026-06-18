@@ -25,7 +25,7 @@ use tokio_tungstenite::tungstenite::Message;
  #[tokio::main]
  async fn main() {
         // Make a GET request to httpbin.org
-        let response = get("https://httpbin.org/get", None).await.unwrap();
+        let response = get("https://httpbin.org/get", None, None).await.unwrap();
         assert_eq!(response.status(), 200);
 
         // Make a POST request to a hidden service

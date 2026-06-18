@@ -14,7 +14,7 @@ jobs:
     name: build, clippy & test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install OpenSSL headers (native-tls)
         run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
@@ -45,7 +45,7 @@ jobs:
     name: rustfmt (nightly)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # rustfmt.toml uses unstable options (group_imports, imports_layout,
       # reorder_impl_items), which require a nightly rustfmt.

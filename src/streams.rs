@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use anyhow::{Result, bail};
 use arti_client::DataStream;
 use arti_client::TorClient;
@@ -12,7 +14,7 @@ use crate::error::Error;
 use crate::get_or_refresh;
 use crate::uri::Uri;
 
-pub async fn create_http_stream(uri: &Uri, max_attempts: u32, tor_client: Option<TorClient<PreferredRuntime>>) -> Result<DataStream> {
+pub async fn create_http_stream(uri: &Uri, max_attempts: u32, tor_client: Option<Arc<TorClient<PreferredRuntime>>>) -> Result<DataStream> {
 	let create_http_stream_span = span!(Level::INFO, "create_http_stream");
 	let _guard = create_http_stream_span.enter();
 

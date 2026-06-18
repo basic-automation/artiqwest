@@ -70,11 +70,13 @@ pub fn is_local(host: &str) -> bool {
 		if ip.is_loopback() {
 			return true;
 		}
-	} else if host_lower.starts_with('[') && host_lower.ends_with(']')
+	} else if host_lower.starts_with('[')
+		&& host_lower.ends_with(']')
 		&& let Ok(ip) = host_lower[1..host_lower.len() - 1].parse::<IpAddr>()
-			&& ip.is_loopback() {
-				return true;
-			}
+		&& ip.is_loopback()
+	{
+		return true;
+	}
 
 	false
 }

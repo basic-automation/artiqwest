@@ -58,7 +58,7 @@ impl Response {
 	///
 	/// #[tokio::main]
 	/// async fn main() {
-	///     let response = get("http://example.com", None).await.unwrap();
+	///     let response = get("http://example.com", None, None).await.unwrap();
 	///     let body = response.body();
 	///     println!("{}", body);
 	/// }

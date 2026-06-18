@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-test:
+    name: build, clippy & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install OpenSSL headers (native-tls)
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --locked --all-targets
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      # The `test_get` / `test_post` / `test_ws` integration tests bootstrap a
+      # real Tor client and reach live onion/external services, so they are
+      # marked `#[ignore]`. The doc examples are likewise live network calls.
+      # CI runs only the fast, deterministic library unit tests (`--lib`, which
+      # also skips doctests). Run the full set locally with
+      # `cargo test -- --ignored`.
+      - name: Test
+        run: cargo test --locked --lib
+
+  fmt:
+    name: rustfmt (nightly)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # rustfmt.toml uses unstable options (group_imports, imports_layout,
+      # reorder_impl_items), which require a nightly rustfmt.
+      - name: Install nightly rustfmt
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - name: Format check
+        run: cargo fmt --all --check

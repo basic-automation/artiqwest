@@ -290,6 +290,7 @@ mod tests {
 
 	#[tokio::test]
 	#[serial] // Add this attribute
+	#[ignore = "requires live Tor network access; run locally with `cargo test -- --ignored`"]
 	async fn test_get() {
 		let tracing_subscriber = tracing_subscriber::fmt::Subscriber::builder().with_max_level(tracing::Level::ERROR).finish();
 		let _ = tracing::subscriber::set_global_default(tracing_subscriber);
@@ -322,6 +323,7 @@ mod tests {
 
 	#[tokio::test]
 	#[serial] // Add this attribute
+	#[ignore = "requires live Tor network access; run locally with `cargo test -- --ignored`"]
 	async fn test_post() {
 		let tracing_subscriber = tracing_subscriber::fmt::Subscriber::builder().with_max_level(tracing::Level::ERROR).finish();
 		let _ = tracing::subscriber::set_global_default(tracing_subscriber);
@@ -356,6 +358,7 @@ mod tests {
 
 	#[tokio::test]
 	#[serial] // Add this attribute
+	#[ignore = "requires live Tor network access; run locally with `cargo test -- --ignored`"]
 	async fn test_ws() {
 		let tracing_subscriber = tracing_subscriber::fmt::Subscriber::builder().with_max_level(tracing::Level::ERROR).finish();
 		let _ = tracing::subscriber::set_global_default(tracing_subscriber);

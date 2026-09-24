@@ -7,6 +7,31 @@ shipped consumer-facing capability is featured in `README.md`.
 Phases are priority-ordered: Phase 1 (correctness/safety) outranks Phase 2 (API surface), and so on.
 Within a phase, take the cheapest workable item first.
 
+**Contributors:** the items below are written to be picked up cold — each names the file, the actual
+symptom, and what "done" looks like. Start in Phase 1.
+
+---
+
+## Locked decisions
+
+Settled direction. Changing any of these is a discussion, not a patch.
+
+- **Tor-first, always.** Every non-loopback request goes over Tor. The only bypass is loopback
+  (`localhost`, `127.0.0.0/8`, `::1`). It is never widened to LAN or private ranges, and Tor is never
+  made opt-in.
+- **The three primitives stay simple.** `get`, `post`, and `ws` are why people reach for this crate.
+  New capability arrives additively (a builder, new functions); breaking those three requires a
+  planned version bump and a loud note in the release.
+- **Stable Rust only.** No `#![feature(...)]` gates. Nightly is used for `cargo fmt` (the
+  `rustfmt.toml` options are unstable) and nothing else.
+- **Security defaults go up, never down.** Certificate verification, timeouts, and bounded retries are
+  the direction of travel. No new `danger_*` escape hatches without a documented, narrow reason.
+- **Don't regress the bounded cache.** The stable `./tor/arti/{state,cache}` directories exist because
+  a previous default grew without bound. Making them *configurable* is wanted; reverting to
+  `TorClientConfig::default()` is not.
+- **Reduce C dependencies, never add them.** `tokio-native-tls` (OpenSSL via FFI) is the one on the
+  request path, and moving off it is a Phase 5 item.
+
 ---
 
 ## Phase 0 — Foundations ✅
@@ -33,18 +58,39 @@ The highest-value work in the crate. Everything here is offline-verifiable.
       authentication for clearnet requests — a MITM at the exit relay is unauthenticated-by-default.
       Verify certs normally when the host is not `.onion`; keep accept-invalid for `.onion` only.
       Add a unit test over the policy-selection function (the decision is pure; the handshake is not).
+      **This is the single most important open item in the crate, and `README.md` warns users about it
+      until it lands.**
+- [ ] **Duplicate request headers are silently dropped, and there is a latent panic behind it.**
+      `get`/`post` take `Vec<(&str, &str)>` and immediately `collect()` it into a
+      `HashMap<String, String>` (`src/lib.rs`), so passing two headers with the same name keeps only
+      one — you cannot send two `Accept` or two `Cookie` headers, and nothing warns you.
+
+      Separately, `make_request` (`src/make_request.rs`) iterates the resulting `HeaderMap` with
+      `for (key, value) in request_headers` and calls `key.unwrap()`. `HeaderMap`'s by-value iterator
+      yields `Option<HeaderName>`, where `None` means "same name as the previous entry" — so that
+      `unwrap()` panics on any multi-valued header. It is unreachable *today* only because the
+      `HashMap` collapse upstream guarantees one value per name.
+
+      Fix both together: carry headers in a structure that preserves duplicates, and handle the `None`
+      case instead of unwrapping. Otherwise fixing the first bug turns the second one live.
+- [ ] **`is_https` is decided by substring sniffing.** `parse_uri` (`src/uri.rs`) does
+      `uri.scheme() == Some(&Scheme::HTTPS) || uri.to_string().contains("wss://")`. The second clause
+      inspects the *whole URI string*, so `http://example.com/?redirect=wss://elsewhere` is
+      misclassified as HTTPS — which then picks port 443 and attempts a TLS upgrade on a plaintext
+      endpoint. Match on the scheme properly (`ws`, `wss`, `http`, `https`) and unit-test the
+      query-string case.
 - [x] **Remove the panicking header serialization.** `UpstreamRequest`/`UpstreamResponse`
       (`src/response/upstream.rs`) both did `value.to_str().unwrap()` when serializing headers, so any
       non-ASCII header value panicked the caller's task. Now serialized with
       `String::from_utf8_lossy`, matching how the body was already handled, with two regression tests
       covering opaque `obs-text` octets. Shipped in 0.4.1.
 - [x] **Fix the broken doctests — all 7 of them failed.** CI runs `cargo test --lib`, which skips
-      doctests entirely, so these have been rotting unseen. Measured `cargo test --doc` on 2026-09-24:
-      `0 passed; 7 failed`. Three fail to **compile**:
-      - `src/response/mod.rs` `from_json` (line 23) and `request_from_json` (line 100) — `E0061`,
-        `post(uri, &body, None)` is three arguments against the four-argument signature.
-      - `src/response/mod.rs` `body` (line 56) — `E0277`, `println!("{}", body)` where `body` is
-        `&[u8]`, which is not `Display`.
+      doctests entirely, so these had been rotting unseen. Measured `cargo test --doc` on 2026-09-24:
+      `0 passed; 7 failed`. Three failed to **compile**:
+      - `src/response/mod.rs` `from_json` and `request_from_json` — `E0061`, `post(uri, &body, None)`
+        is three arguments against the four-argument signature.
+      - `src/response/mod.rs` `body` — `E0277`, `println!("{}", body)` where `body` is `&[u8]`, which
+        is not `Display`.
 
       The `ws` example was broken against tungstenite 0.29 as well — `Message::Text` takes
       `Utf8Bytes` (not `String`) and `into_data()` returns `Bytes` (not `Vec<u8>`) — and the same
@@ -59,7 +105,8 @@ The highest-value work in the crate. Everything here is offline-verifiable.
       client; only recycle the crate-owned global), then restructure the loop so the retry/attempt
       accounting is legible and unit-testable.
 - [ ] **Request timeouts.** No operation in the crate is time-bounded: a hung onion service holds the
-      caller forever. Add a per-request timeout with a sane default and a way to override it.
+      caller forever. Add a per-request timeout with a sane default and a way to override it. Until
+      this lands `README.md` tells users to wrap calls in `tokio::time::timeout`.
 - [ ] Audit every remaining `unwrap`/`expect` on a non-test path and either remove it or justify it
       in a comment.
 
@@ -69,10 +116,19 @@ The highest-value work in the crate. Everything here is offline-verifiable.
       callers only ever see an opaque `anyhow::Error` and cannot match on failure modes. Export it,
       fix the `Unkown`/`Faild` spellings in the same change, and decide whether the public signatures
       return `Result<T, artiqwest::Error>` instead of `anyhow::Result<T>` (a breaking change — plan
-      the major bump).
+      the version bump).
 - [ ] **HTTP methods beyond GET/POST.** `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS` — either as
       sibling functions or (preferred) one generic `request(method, uri, ..)` that `get`/`post`
       delegate to, collapsing the duplicated bodies currently in `lib.rs`.
+- [ ] **The loopback path supports only GET and POST.** `make_local_request`
+      (`src/make_request.rs`) matches on the method and returns
+      `Error::Reqwest("Unsupported method")` for anything else. So whatever the item above adds for
+      the Tor path has to be added here too, or the same call silently behaves differently depending
+      on whether the target happens to be loopback.
+- [ ] **Loopback response bodies are not byte-preserved.** `make_local_request` reads the response
+      with `reqwest`'s `.text()`, a lossy UTF-8 conversion, then re-encodes it — so binary payloads
+      (images, protobuf, gzip) come back corrupted on the loopback path while working fine over Tor.
+      Read bytes instead.
 - [ ] **A request builder.** The four-positional-argument signature (`uri, body, headers, client`)
       does not extend. A builder (`Request::get(uri).header(..).timeout(..).client(..).send()`) absorbs
       timeouts, redirects, methods, and bodies without another breaking signature change each time.
@@ -80,6 +136,9 @@ The highest-value work in the crate. Everything here is offline-verifiable.
       loop. Add opt-in redirect following with a bounded hop count and a cross-origin policy.
 - [ ] **Non-string request bodies.** `post` takes `&str`, so binary payloads must round-trip through
       UTF-8. Accept `impl Into<Bytes>`.
+- [ ] **No response decompression.** The crate never sends `Accept-Encoding` and never decodes a
+      response body, so a server that compresses anyway hands the caller bytes they have to inflate
+      themselves. Decide whether to negotiate and decode, or to document the omission.
 - [ ] **Custom headers for `ws`.** `ws(uri, client)` has no header parameter, so an authenticated
       websocket handshake is impossible.
 - [ ] **Streaming response bodies.** `Response` buffers the whole body into `Bytes`; large downloads
@@ -107,15 +166,16 @@ The highest-value work in the crate. Everything here is offline-verifiable.
       check — it is a guess that both wastes 5s on a warm client and can be too short on a cold one.
 - [ ] **Document the global-client contract.** `TOR_CLIENT` is a process-wide `LazyLock`; spell out in
       the docs what that means for multi-tenant callers and isolation between requests.
-- [ ] Investigate per-request stream isolation (`arti_client` isolation tokens) so two unrelated
-      requests are not correlatable through a shared circuit.
+- [ ] **Per-request stream isolation.** Investigate `arti_client` isolation tokens so two unrelated
+      requests from one process are not correlatable through a shared circuit. `README.md` currently
+      warns that they may be.
 
 ## Phase 4 — Testing & CI
 
-- [ ] **Grow the offline unit-test suite.** Only `src/uri.rs` has unit tests today; CI's
-      `cargo test --lib` therefore proves very little. Add offline tests for the pure logic:
-      `negotiated_http_version` mapping, the header `HashMap` conversion, request construction in
-      `make_request`, the TLS-policy decision from Phase 1.
+- [ ] **Grow the offline unit-test suite.** Only `src/uri.rs` and `src/response/upstream.rs` have unit
+      tests today (4 in total), so CI's `cargo test --lib` proves very little. Add offline tests for
+      the pure logic: `negotiated_http_version` mapping, the header conversion, request construction
+      in `make_request`, the scheme parsing and the TLS-policy decision from Phase 1.
 - [ ] **A loopback integration harness that does not need Tor.** Most of `make_request`/`streams` can
       be exercised against a local axum server over plain TCP. Getting this green unlocks real
       coverage in CI, where `#[ignore]`d live-Tor tests never run.
@@ -141,7 +201,20 @@ The highest-value work in the crate. Everything here is offline-verifiable.
       warnings by `cargo publish`. Neither is direct; find what pins them and move to unyanked
       versions.
 - [ ] **Declare an MSRV** (`rust-version` in `Cargo.toml`) and verify it in CI. `edition = "2024"`
-      already implies a floor; state it.
+      implies a floor, but `src/uri.rs` also uses let-chains, which raises it further — find the real
+      minimum rather than guessing, then state it. `README.md` currently has to hedge on this.
+- [ ] **Nothing compiles the README's examples.** They are the first code most users run, and they
+      are checked by no tooling at all — the stale tungstenite `ws` snippet sat there through a whole
+      release, and a hand-written `Arc::new(TorClient::create_bootstrapped(..))` double-wrap was
+      caught in review only because the examples were extracted into a scratch crate and compiled by
+      hand. `create_bootstrapped` already returns `Arc<TorClient<_>>`.
+
+      Make this automatic. `#![doc = include_str!("../README.md")]` would fold the README into the
+      crate docs so `cargo test --doc` type-checks its examples on every build, and would also stop
+      `README.md` and the crate-level docs from describing the same API in two places that drift
+      apart. Mind the interaction with the `no_run` convention and with the README's non-Rust fences.
+- [ ] Check that `docs.rs` builds cleanly, including the `arti-client` `static` feature; the README
+      badge links it.
 - [x] Add `cargo test --doc` to CI (shipped alongside the Phase 1 doctest fix, in 0.4.1).
 
 ## Phase 5 — Footprint & performance
@@ -151,15 +224,17 @@ The highest-value work in the crate. Everything here is offline-verifiable.
       compile cost for something only the tests use.
 - [ ] **Trim the `reqwest` dependency.** A full-default `reqwest` is pulled in solely for the loopback
       fallback, duplicating the TLS and hyper stacks. Either narrow its features or serve loopback
-      with the `hyper` client the crate already has.
+      with the `hyper` client the crate already has. Doing the latter would also fix the two loopback
+      divergences filed in Phase 2 (methods, binary bodies) at the root.
 - [ ] **Dedupe the crate graph.** `lib.rs` carries `#![allow(clippy::multiple_crate_versions)]`;
       find out what is actually duplicated (`cargo tree --duplicates`) and remove the allow if the
       duplication can be resolved.
 - [ ] **Evaluate `rustls` in place of `tokio-native-tls`.** The crate's TLS today is OpenSSL through
-      FFI — it is why CI has to `apt-get install libssl-dev`, and it is the only C dependency on the
-      request path. `rustls` is pure Rust, is already in `[dev-dependencies]`, and is what `arti`
-      itself prefers. Scope the migration (ALPN, the per-host verification policy from Phase 1, the
-      `.onion` self-signed case) before committing to it; a feature flag may be the landing strategy.
+      FFI — it is why CI has to `apt-get install libssl-dev`, why `README.md` has to tell users to
+      install it, and it is the only C dependency on the request path. `rustls` is pure Rust, is
+      already in `[dev-dependencies]`, and is what `arti` itself prefers. Scope the migration (ALPN,
+      the per-host verification policy from Phase 1, the `.onion` self-signed case) before committing
+      to it; a feature flag may be the landing strategy.
 - [ ] **Connection reuse.** Every request builds a fresh Tor stream and TLS handshake; a keep-alive
       pool keyed by host would remove seconds per request on repeat calls.
 - [ ] Benchmark request latency (onion and clearnet) so the pooling work above has a before/after
@@ -167,7 +242,9 @@ The highest-value work in the crate. Everything here is offline-verifiable.
 
 ## Cross-cutting
 
-- [ ] Keep `README.md` current with shipped capability only — never aspirational work.
+- [ ] Keep `README.md` current with shipped capability only — never aspirational work. Where current
+      behavior is a hazard (the TLS verification gap, the missing timeouts, shared circuits), say so
+      plainly rather than omitting it.
 - [ ] Keep dependencies current (`cargo update`, `cargo upgrade`), including majors, whenever they can
       be made green. Respect the deliberate pin: `arti-client` / `tor-rtcompat` are matched to the
       versions the sibling `onyums` crate builds against.

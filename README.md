@@ -39,7 +39,7 @@ use tokio_tungstenite::tungstenite::Message;
         let write_messages = {
         async {
             loop {
-                write.send(Message::Text("Hello WebSocket".to_string())).await.unwrap();
+                write.send(Message::Text("Hello WebSocket".into())).await.unwrap();
                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
             }
         }
@@ -48,7 +48,7 @@ use tokio_tungstenite::tungstenite::Message;
     let read_messages = {
         read.for_each(|message| async {
             let data = message.unwrap().into_data();
-            let text = String::from_utf8(data).unwrap();
+            let text = String::from_utf8(data.to_vec()).unwrap();
             println!("Received: {text}");
         })
     };

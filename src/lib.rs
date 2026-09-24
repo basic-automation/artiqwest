@@ -6,7 +6,7 @@
 //! It provides two basic primitives: `get` and `post` functions.
 //!
 //! ## Example
-//! ```rust
+//! ```rust,no_run
 //! use artiqwest::get;
 //! use artiqwest::post;
 //!
@@ -67,7 +67,7 @@ fn negotiated_http_version(stream: &tokio_native_tls::TlsStream<arti_client::Dat
 /// Send `GET` request to the specified URI over the TOR network.
 ///
 /// # Example
-/// ```rust
+/// ```rust,no_run
 /// use artiqwest::get;
 ///
 /// #[tokio::main]
@@ -121,7 +121,7 @@ pub async fn get(uri: &str, headers: Option<Vec<(&str, &str)>>, existing_client:
 /// Send `POST` request to the specified URI over the TOR network.
 ///
 /// # Example
-/// ```rust
+/// ```rust,no_run
 /// use artiqwest::post;
 ///
 /// #[tokio::main]
@@ -170,7 +170,7 @@ pub async fn post(uri: &str, body: &str, headers: Option<Vec<(&str, &str)>>, exi
 /// Get a websocket connection to the specified URI over the TOR network.
 ///
 /// # Example
-/// ```rust
+/// ```rust,no_run
 /// use artiqwest::ws;
 /// use futures_util::future;
 /// use futures_util::pin_mut;
@@ -184,7 +184,7 @@ pub async fn post(uri: &str, body: &str, headers: Option<Vec<(&str, &str)>>, exi
 ///     let write_messages = {
 ///         async {
 ///             for i in 1..=5 {
-///                 write.send(Message::Text(format!("Hello WebSocket #{}", i))).await.unwrap();
+///                 write.send(Message::Text(format!("Hello WebSocket #{i}").into())).await.unwrap();
 ///                 println!("Sending message {}: Hello WebSocket #{}", i, i);
 ///                 tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 ///             }
@@ -199,7 +199,7 @@ pub async fn post(uri: &str, body: &str, headers: Option<Vec<(&str, &str)>>, exi
 ///             if let Ok(msg) = message {
 ///                 if msg.is_close() { return; }
 ///                 let data = msg.into_data();
-///                 let text = String::from_utf8(data).unwrap();
+///                 let text = String::from_utf8(data.to_vec()).unwrap();
 ///                 println!("Received: {}", text);
 ///             }
 ///         })

@@ -33,11 +33,12 @@ The highest-value work in the crate. Everything here is offline-verifiable.
       authentication for clearnet requests — a MITM at the exit relay is unauthenticated-by-default.
       Verify certs normally when the host is not `.onion`; keep accept-invalid for `.onion` only.
       Add a unit test over the policy-selection function (the decision is pure; the handshake is not).
-- [ ] **Remove the panicking header serialization.** `UpstreamRequest`/`UpstreamResponse`
-      (`src/response/upstream.rs`) both do `value.to_str().unwrap()` when serializing headers — any
-      non-ASCII header value panics the caller's task. Serialize lossily (or skip + record) and unit-test
-      with a `HeaderValue::from_bytes(&[0xff])`.
-- [ ] **Fix the broken doctests — all 7 of them fail.** CI runs `cargo test --lib`, which skips
+- [x] **Remove the panicking header serialization.** `UpstreamRequest`/`UpstreamResponse`
+      (`src/response/upstream.rs`) both did `value.to_str().unwrap()` when serializing headers, so any
+      non-ASCII header value panicked the caller's task. Now serialized with
+      `String::from_utf8_lossy`, matching how the body was already handled, with two regression tests
+      covering opaque `obs-text` octets. Shipped in 0.4.1.
+- [x] **Fix the broken doctests — all 7 of them failed.** CI runs `cargo test --lib`, which skips
       doctests entirely, so these have been rotting unseen. Measured `cargo test --doc` on 2026-09-24:
       `0 passed; 7 failed`. Three fail to **compile**:
       - `src/response/mod.rs` `from_json` (line 23) and `request_from_json` (line 100) — `E0061`,
@@ -45,10 +46,13 @@ The highest-value work in the crate. Everything here is offline-verifiable.
       - `src/response/mod.rs` `body` (line 56) — `E0277`, `println!("{}", body)` where `body` is
         `&[u8]`, which is not `Display`.
 
-      The other four (the crate-level example, `get`, `post`, `ws`) compile but fail at **runtime**
-      because they dial the live Tor network. Fix the three compile errors, then mark the
-      network-touching examples `no_run` so they typecheck without needing Tor, and add
-      `cargo test --doc` to CI so they cannot rot again.
+      The `ws` example was broken against tungstenite 0.29 as well — `Message::Text` takes
+      `Utf8Bytes` (not `String`) and `into_data()` returns `Bytes` (not `Vec<u8>`) — and the same
+      stale snippet was in `README.md`. The rest dialed the live Tor network.
+
+      Fixed in 0.4.1: the compile errors corrected, the `ws` example and its README twin brought up
+      to the 0.29 API, all seven marked `no_run` so they typecheck without needing Tor, and
+      `cargo test --doc` added to CI so they cannot rot unnoticed again.
 - [ ] **Audit the retry loop in `create_http_stream`.** On failure it sets the global `TOR_CLIENT` to
       `None` and re-bootstraps — including when the caller passed their own `existing_client`, whose
       lifetime the crate does not own. Decide and document the contract (never discard a caller's
@@ -116,10 +120,14 @@ The highest-value work in the crate. Everything here is offline-verifiable.
       be exercised against a local axum server over plain TCP. Getting this green unlocks real
       coverage in CI, where `#[ignore]`d live-Tor tests never run.
 - [ ] **Supply-chain gates in CI:** `cargo audit` (or `cargo deny check`, as the sibling onyums repo
-      does) on a schedule, plus `cargo deny check licenses|bans`.
+      does) on a schedule, plus `cargo deny check licenses|bans`. Dependabot is already reporting
+      against this repo, but nothing runs in CI and nothing fails a build — RUSTSEC advisories reach
+      the maintainer only as a GitHub alert nobody is required to look at. The `quinn-proto`
+      memory-exhaustion advisory (GHSA high, `< 0.11.15`) sat in `Cargo.lock` until it was noticed by
+      hand; a gate in CI is what makes the next one impossible to miss.
 - [ ] **Declare an MSRV** (`rust-version` in `Cargo.toml`) and verify it in CI. `edition = "2024"`
       already implies a floor; state it.
-- [ ] Add `cargo test --doc` to CI (depends on the Phase 1 doctest fix).
+- [x] Add `cargo test --doc` to CI (shipped alongside the Phase 1 doctest fix, in 0.4.1).
 
 ## Phase 5 — Footprint & performance
 

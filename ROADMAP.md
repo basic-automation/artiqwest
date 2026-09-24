@@ -37,11 +37,18 @@ The highest-value work in the crate. Everything here is offline-verifiable.
       (`src/response/upstream.rs`) both do `value.to_str().unwrap()` when serializing headers — any
       non-ASCII header value panics the caller's task. Serialize lossily (or skip + record) and unit-test
       with a `HeaderValue::from_bytes(&[0xff])`.
-- [ ] **Fix the broken doctests.** The `from_json` / `request_from_json` examples in
-      `src/response/mod.rs` call `post(uri, &body, None)` — three arguments against a four-argument
-      signature. CI runs `cargo test --lib`, which skips doctests, so these have been rotting unseen.
-      Fix the signatures, then mark the network-touching examples `no_run` so they typecheck without
-      dialing Tor, and add `cargo test --doc` to CI.
+- [ ] **Fix the broken doctests — all 7 of them fail.** CI runs `cargo test --lib`, which skips
+      doctests entirely, so these have been rotting unseen. Measured `cargo test --doc` on 2026-09-24:
+      `0 passed; 7 failed`. Three fail to **compile**:
+      - `src/response/mod.rs` `from_json` (line 23) and `request_from_json` (line 100) — `E0061`,
+        `post(uri, &body, None)` is three arguments against the four-argument signature.
+      - `src/response/mod.rs` `body` (line 56) — `E0277`, `println!("{}", body)` where `body` is
+        `&[u8]`, which is not `Display`.
+
+      The other four (the crate-level example, `get`, `post`, `ws`) compile but fail at **runtime**
+      because they dial the live Tor network. Fix the three compile errors, then mark the
+      network-touching examples `no_run` so they typecheck without needing Tor, and add
+      `cargo test --doc` to CI so they cannot rot again.
 - [ ] **Audit the retry loop in `create_http_stream`.** On failure it sets the global `TOR_CLIENT` to
       `None` and re-bootstraps — including when the caller passed their own `existing_client`, whose
       lifetime the crate does not own. Decide and document the contract (never discard a caller's
@@ -81,6 +88,17 @@ The highest-value work in the crate. Everything here is offline-verifiable.
       CWDs silently get different Tor caches, and a consumer with no write access to CWD fails. Allow
       the caller to supply the directories (and/or a full `TorClientConfig`), defaulting to today's
       behavior.
+
+      **This is currently a hard blocker on the dev workstation, not just a nicety.** arti walks the
+      ancestor chain of its state directory and refuses a world-writable one. `/mnt/deepmem` is
+      `drwxrwxrwx`, so every live-Tor run from this dev tree dies before it reaches the network with:
+
+      > `Incorrect permissions: "/mnt/deepmem" is u=rwx,g=rwx,o=rwx; must be o-w`
+
+      So the `#[ignore]`d integration tests and the four networked doctests cannot pass here at all,
+      for a reason that has nothing to do with the network or with this crate's logic. Letting the
+      caller point the state dir at a private location (e.g. under `$HOME`) fixes it without touching
+      the permissions of a volume shared with the household server stack.
 - [ ] **Replace the fixed 5-second post-bootstrap sleep** in `get_or_refresh` with a real readiness
       check — it is a guess that both wastes 5s on a warm client and can be too short on a cold one.
 - [ ] **Document the global-client contract.** `TOR_CLIENT` is a process-wide `LazyLock`; spell out in

@@ -125,6 +125,21 @@ The highest-value work in the crate. Everything here is offline-verifiable.
       the maintainer only as a GitHub alert nobody is required to look at. The `quinn-proto`
       memory-exhaustion advisory (GHSA high, `< 0.11.15`) sat in `Cargo.lock` until it was noticed by
       hand; a gate in CI is what makes the next one impossible to miss.
+- [ ] **`recursion_depth_exceeding_limit` fails clippy on recent nightlies.** Under nightly 1.100
+      (`rustc 1.100.0-nightly (6bb1652a0 2026-09-22)`), `cargo clippy --all-targets -- -D warnings`
+      fails with 2 errors from this new future-compat lint, firing on `Send` auto-trait computation
+      through `arti_client`'s own future types (`connect_with_prefs` → `get_or_launch_exit_tunnel`).
+      **Confirmed pre-existing**, not introduced by any recent change: unmodified master at `b225869`
+      reproduces it identically. CI runs clippy on *stable* and is green, so this is invisible there
+      for now — but the lint text says "this was previously accepted by the compiler but is being
+      phased out; it will become a hard error in a future release", so it will reach stable
+      eventually. Track rust-lang/rust#159228
+      (<https://github.com/rust-lang/rust/issues/159228>) and decide between raising
+      `#![recursion_limit]` and waiting for upstream arti to shrink the future graph. **Do not
+      silence it with `#![allow(...)]`.**
+- [ ] **Two yanked crates in `Cargo.lock`** — `chacha20 v0.10.0` and `spin v0.9.8`, both surfaced as
+      warnings by `cargo publish`. Neither is direct; find what pins them and move to unyanked
+      versions.
 - [ ] **Declare an MSRV** (`rust-version` in `Cargo.toml`) and verify it in CI. `edition = "2024"`
       already implies a floor; state it.
 - [x] Add `cargo test --doc` to CI (shipped alongside the Phase 1 doctest fix, in 0.4.1).

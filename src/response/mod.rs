@@ -20,7 +20,7 @@ impl Response {
 	/// Deserialize the response body as JSON into the provided type.
 	///
 	/// # Example
-	/// ```rust
+	/// ```rust,no_run
 	/// use serde::{Serialize, Deserialize};
 	/// use artiqwest::post;
 	///
@@ -35,7 +35,7 @@ impl Response {
 	///         };
 	///
 	///         let body = serde_json::to_string(&my_response).unwrap();
-	///         let response = post("http://vpns6exmqmg5znqmgxa5c6rgzpt6imy5yzrbsoszovgfipdjypnchpyd.onion/echo", &body, None).await.unwrap();
+	///         let response = post("http://vpns6exmqmg5znqmgxa5c6rgzpt6imy5yzrbsoszovgfipdjypnchpyd.onion/echo", &body, None, None).await.unwrap();
 	///         let response = response.from_json::<MyResponse>().unwrap();
 	///         assert_eq!(response.key, "value");
 	///         ()
@@ -53,14 +53,14 @@ impl Response {
 	/// Returns the response body as a slice of bytes.
 	///
 	/// # Example
-	/// ```rust
+	/// ```rust,no_run
 	/// use artiqwest::get;
 	///
 	/// #[tokio::main]
 	/// async fn main() {
 	///     let response = get("http://example.com", None, None).await.unwrap();
 	///     let body = response.body();
-	///     println!("{}", body);
+	///     println!("{}", String::from_utf8_lossy(body));
 	/// }
 	/// ```
 	pub fn body(&self) -> &[u8] {
@@ -97,7 +97,7 @@ impl Response {
 	/// Deserialize the request body as JSON into the provided type.
 	///
 	/// # Example
-	/// ```rust
+	/// ```rust,no_run
 	/// use serde::{Serialize, Deserialize};
 	/// use artiqwest::post;
 	///
@@ -113,7 +113,7 @@ impl Response {
 	///         };
 	///
 	///         let body = serde_json::to_string(&my_response).unwrap();
-	///         let response = post("http://vpns6exmqmg5znqmgxa5c6rgzpt6imy5yzrbsoszovgfipdjypnchpyd.onion/echo", &body, None).await.unwrap();
+	///         let response = post("http://vpns6exmqmg5znqmgxa5c6rgzpt6imy5yzrbsoszovgfipdjypnchpyd.onion/echo", &body, None, None).await.unwrap();
 	///         let request = response.request_from_json::<MyResponse>().unwrap();
 	///         assert_eq!(request.key, "value");
 	///         ()

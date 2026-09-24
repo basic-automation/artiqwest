@@ -34,12 +34,16 @@ jobs:
 
       # The `test_get` / `test_post` / `test_ws` integration tests bootstrap a
       # real Tor client and reach live onion/external services, so they are
-      # marked `#[ignore]`. The doc examples are likewise live network calls.
-      # CI runs only the fast, deterministic library unit tests (`--lib`, which
-      # also skips doctests). Run the full set locally with
-      # `cargo test -- --ignored`.
+      # marked `#[ignore]`. Run those locally with `cargo test -- --ignored`.
       - name: Test
         run: cargo test --locked --lib
+
+      # The doc examples dial the live network too, but they are marked
+      # `no_run`, so this compiles every one of them without executing any.
+      # Without this step they rot unnoticed: all 7 were broken (three would
+      # not even compile) before it was added.
+      - name: Doc tests
+        run: cargo test --locked --doc
 
   fmt:
     name: rustfmt (nightly)

@@ -235,12 +235,19 @@ directories configurable is on the [roadmap](./ROADMAP.md).
 
 Please read this before using Artiqwest for anything that matters.
 
-- **TLS certificates are not currently verified.** The HTTPS handshake is made with
-  `danger_accept_invalid_certs(true)` for *every* host. For `.onion` services this is reasonable —
-  they are self-signed by design and authenticated by the onion address itself — but it applies to
-  clearnet requests too, where it means a hostile exit relay is not detected. Fixing this so clearnet
-  hosts are verified normally is the top item on the [roadmap](./ROADMAP.md). **Until it lands, do
-  not rely on Artiqwest for clearnet transport authenticity.**
+- **Clearnet certificates are verified; `.onion` certificates are not.** This split is deliberate.
+  A clearnet host is checked against the platform trust store exactly as any other HTTPS client would
+  check it — Tor conceals *who* is asking, but it does nothing to prove the far end is who it claims,
+  and the exit relay is precisely the position from which to substitute a certificate. An onion
+  service is exempt, because there the hostname *is* the service's public key and the Tor protocol
+  authenticates it during the rendezvous; no public CA issues certificates for `.onion`, so
+  self-signed is the norm there. Only the final label counts, so a clearnet lookalike like
+  `onion.example.com` is verified normally.
+
+  *Changed in 0.5.0.* Earlier versions accepted invalid certificates for **every** host, clearnet
+  included. If you were relying on that to reach a clearnet host with a self-signed or expired
+  certificate, that request now fails — which is the point, but it is a behavior change. There is no
+  opt-out yet; it will arrive with the request builder on the [roadmap](./ROADMAP.md).
 - **Requests are not time-bounded.** There is no timeout yet, so an unresponsive service can hold a
   call indefinitely. Wrap calls in `tokio::time::timeout` if you need a bound.
 - **The Tor client is process-wide.** Requests may share circuits, so two requests from the same

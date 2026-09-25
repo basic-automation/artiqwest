@@ -81,6 +81,29 @@ pub fn is_local(host: &str) -> bool {
 	false
 }
 
+/// Whether `host` names a Tor onion service.
+///
+/// This decides whether the web PKI has any authority over the host, so it
+/// governs the TLS certificate policy in [`crate::streams::cert_policy`]. An
+/// onion service authenticates *itself*: the hostname is derived from the
+/// service's public key and is checked by the Tor protocol during the
+/// rendezvous, so no public CA issues certificates for `.onion` and onion
+/// services conventionally serve self-signed ones.
+///
+/// Matching is on the final label only, so a clearnet lookalike such as
+/// `onion.example.com` is not mistaken for one. `.onion` is reserved by
+/// RFC 7686 and cannot be registered in the public DNS, so a genuine
+/// `*.onion` host can only be reached through Tor's own onion resolution.
+pub fn is_onion(host: &str) -> bool {
+	// Tor hostnames are case-insensitive, and a fully-qualified name may carry a
+	// trailing dot.
+	let host = host.trim_end_matches('.').to_lowercase();
+
+	// Require a non-empty label before the suffix, so a bare ".onion" does not
+	// qualify.
+	host.strip_suffix(".onion").is_some_and(|label| !label.is_empty())
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -137,5 +160,35 @@ mod tests {
 		assert!(!is_local("8.8.8.8")); // Public
 		assert!(!is_local("[2001:db8::1]")); // Non-loopback IPv6
 		assert!(!is_local("invalid"));
+	}
+
+	#[test]
+	fn test_is_onion() {
+		// Real onion addresses
+		assert!(is_onion("facebookwkhpilnemxj7asaniu7vnjjbiltxjqhye3mhbshg7kx5tfyd.onion"));
+		assert!(is_onion("vpns6exmqmg5znqmgxa5c6rgzpt6imy5yzrbsoszovgfipdjypnchpyd.onion"));
+
+		// Tor hostnames are case-insensitive, and may be fully qualified
+		assert!(is_onion("ABC.ONION"));
+		assert!(is_onion("abc.onion."));
+		assert!(is_onion("sub.abc.onion"));
+
+		// Ordinary clearnet hosts
+		assert!(!is_onion("example.com"));
+		assert!(!is_onion("httpbin.org"));
+		assert!(!is_onion("localhost"));
+		assert!(!is_onion(""));
+
+		// A clearnet host must never inherit the onion exemption by merely
+		// mentioning ".onion" somewhere other than the final label -- this is the
+		// case that would hand an attacker a certificate-verification bypass.
+		assert!(!is_onion("onion.example.com"));
+		assert!(!is_onion("abc.onion.example.com"));
+		assert!(!is_onion("notonion"));
+		assert!(!is_onion("onion"));
+		assert!(!is_onion("myonion"));
+
+		// A bare suffix with no service label is not a host
+		assert!(!is_onion(".onion"));
 	}
 }

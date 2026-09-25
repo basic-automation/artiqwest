@@ -13,6 +13,7 @@ use crate::TOR_CLIENT;
 use crate::error::Error;
 use crate::get_or_refresh;
 use crate::uri::Uri;
+use crate::uri::is_onion;
 
 pub async fn create_http_stream(uri: &Uri, max_attempts: u32, tor_client: Option<Arc<TorClient<PreferredRuntime>>>) -> Result<DataStream> {
 	let create_http_stream_span = span!(Level::INFO, "create_http_stream");
@@ -91,6 +92,26 @@ pub async fn create_http_stream(uri: &Uri, max_attempts: u32, tor_client: Option
 	Ok(stream)
 }
 
+/// How the TLS certificate a host presents should be authenticated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CertPolicy {
+	/// Verify the certificate chain and the hostname against the platform trust
+	/// store, the way any ordinary HTTPS client does.
+	Verify,
+	/// Accept a self-signed certificate.
+	AcceptSelfSigned,
+}
+
+/// Choose the certificate policy for `host`.
+///
+/// This is the whole of the decision, kept separate from the handshake so it can
+/// be tested without a network: onion services are exempt from verification
+/// because the onion address *is* the identity (see [`is_onion`]), and
+/// everything else is verified.
+pub fn cert_policy(host: &str) -> CertPolicy {
+	if is_onion(host) { CertPolicy::AcceptSelfSigned } else { CertPolicy::Verify }
+}
+
 pub async fn https_upgrade<S>(uri: &Uri, stream: S, alpn: &[&str]) -> Result<TlsStream<S>>
 where
 	S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
@@ -98,9 +119,28 @@ where
 	let https_upgrade_span = span!(Level::INFO, "https_upgrade");
 	let _guard = https_upgrade_span.enter();
 
-	event!(Level::INFO, "Upgrading the stream to HTTPS with ALPN: {:?}", alpn);
+	let policy = cert_policy(&uri.host);
 
-	let cx = match TlsConnector::builder().request_alpns(alpn).danger_accept_invalid_certs(true).build() {
+	event!(Level::INFO, "Upgrading the stream to HTTPS with ALPN: {:?}, certificate policy: {:?}", alpn, policy);
+
+	let mut builder = TlsConnector::builder();
+	builder.request_alpns(alpn);
+
+	match policy {
+		// An onion service is authenticated by its address, not by the web PKI,
+		// and no public CA will issue it a certificate -- so a self-signed one is
+		// the norm and rejecting it would make `.onion` unreachable.
+		CertPolicy::AcceptSelfSigned => {
+			builder.danger_accept_invalid_certs(true);
+		}
+		// Clearnet: verify the chain and the hostname like any other HTTPS
+		// client. Tor conceals who is making the request; it does nothing to
+		// prove the far end is who it claims, and the exit relay is precisely
+		// the position from which to substitute a certificate.
+		CertPolicy::Verify => {}
+	}
+
+	let cx = match builder.build() {
 		Ok(cx) => cx,
 		Err(e) => {
 			event!(Level::ERROR, "Failed to create a TLS connector: {}", e);
@@ -117,4 +157,35 @@ where
 	};
 
 	Ok(stream)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn onion_services_may_present_a_self_signed_certificate() {
+		assert_eq!(cert_policy("vpns6exmqmg5znqmgxa5c6rgzpt6imy5yzrbsoszovgfipdjypnchpyd.onion"), CertPolicy::AcceptSelfSigned);
+		assert_eq!(cert_policy("ABC.ONION"), CertPolicy::AcceptSelfSigned);
+	}
+
+	#[test]
+	fn clearnet_hosts_are_verified() {
+		assert_eq!(cert_policy("httpbin.org"), CertPolicy::Verify);
+		assert_eq!(cert_policy("example.com"), CertPolicy::Verify);
+		assert_eq!(cert_policy("check.torproject.org"), CertPolicy::Verify);
+	}
+
+	/// The regression that matters: before this policy existed, *every* host got
+	/// `danger_accept_invalid_certs(true)`, so a hostile exit relay could
+	/// substitute a certificate for any clearnet site undetected. A lookalike
+	/// host must not be able to claim the onion exemption to get that back.
+	#[test]
+	fn onion_lookalikes_do_not_escape_verification() {
+		assert_eq!(cert_policy("onion.example.com"), CertPolicy::Verify);
+		assert_eq!(cert_policy("abc.onion.example.com"), CertPolicy::Verify);
+		assert_eq!(cert_policy("notonion"), CertPolicy::Verify);
+		assert_eq!(cert_policy(".onion"), CertPolicy::Verify);
+		assert_eq!(cert_policy(""), CertPolicy::Verify);
+	}
 }

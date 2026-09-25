@@ -52,14 +52,24 @@ Settled direction. Changing any of these is a discussion, not a patch.
 
 The highest-value work in the crate. Everything here is offline-verifiable.
 
-- [ ] **TLS certificate verification for clearnet hosts.** `https_upgrade` (`src/streams.rs`) sets
+- [x] **TLS certificate verification for clearnet hosts.** `https_upgrade` (`src/streams.rs`) set
       `danger_accept_invalid_certs(true)` for *every* HTTPS target. That is defensible for `.onion`
-      (self-signed by design, authenticated by the onion address itself) but silently disables
-      authentication for clearnet requests — a MITM at the exit relay is unauthenticated-by-default.
-      Verify certs normally when the host is not `.onion`; keep accept-invalid for `.onion` only.
-      Add a unit test over the policy-selection function (the decision is pure; the handshake is not).
-      **This is the single most important open item in the crate, and `README.md` warns users about it
-      until it lands.**
+      (self-signed by design, authenticated by the onion address itself) but it silently disabled
+      authentication for clearnet requests too — a MITM at the exit relay was
+      unauthenticated-by-default.
+
+      Fixed in 0.5.0. `CertPolicy` + `cert_policy(host)` (`src/streams.rs`) make the decision, kept
+      pure and separate from the handshake so it is testable offline; `is_onion(host)`
+      (`src/uri.rs`) classifies the host on its final label only, so a clearnet lookalike such as
+      `onion.example.com` cannot claim the exemption. `danger_accept_invalid_certs` is now reached
+      only on the `AcceptSelfSigned` arm, and the `match` is exhaustive so a future policy forces a
+      decision rather than defaulting to insecure. Four unit tests, including an explicit
+      lookalike-bypass regression test.
+
+      **This was a behavior change, not a pure bug fix** — a caller reaching a clearnet host with a
+      self-signed certificate now fails. There is deliberately no opt-out: adding a `danger_*` knob
+      is against the locked decisions above, and the escape hatch belongs on the request builder when
+      that lands.
 - [ ] **Duplicate request headers are silently dropped, and there is a latent panic behind it.**
       `get`/`post` take `Vec<(&str, &str)>` and immediately `collect()` it into a
       `HashMap<String, String>` (`src/lib.rs`), so passing two headers with the same name keeps only
@@ -239,6 +249,62 @@ The highest-value work in the crate. Everything here is offline-verifiable.
       pool keyed by host would remove seconds per request on repeat calls.
 - [ ] Benchmark request latency (onion and clearnet) so the pooling work above has a before/after
       number to hold.
+
+## Phase 6 — JavaScript bindings
+
+Make artiqwest callable from JavaScript, so a Node/Deno/Bun program can fetch over Tor without
+shelling out to a Tor daemon or writing any Rust. This is a new deliverable rather than a fix to
+existing code, so it sits after the correctness phases — but it is the phase most likely to bring new
+users, and none of it is blocked by the open items above.
+
+**Decide the target before writing any binding code.** The three options are not interchangeable and
+the choice determines everything after it:
+
+- [ ] **Pick the binding strategy: native addon vs WASM vs a local sidecar.** The decisive constraint
+      is that arti needs real TCP sockets and a filesystem for its state and directory cache.
+      - **Native addon (`napi-rs`, recommended starting assumption).** Compiles the real crate,
+        real arti, real sockets. Gives Node/Deno/Bun a normal `import`. Cost: prebuilt binaries per
+        platform and libc, which is the bulk of the work — and today the crate links OpenSSL through
+        `native-tls`, so the `rustls` migration in Phase 5 is close to a prerequisite for sane
+        cross-compilation.
+      - **WASM (`wasm-bindgen`).** A browser cannot open raw TCP, so browser WASM cannot run arti at
+        all — this is a hard blocker, not an inconvenience. `wasm32-wasip1` with socket support is
+        plausible for server-side runtimes but a much larger bet. Do not promise a browser build.
+      - **Sidecar.** Ship a small Rust binary exposing a local HTTP/IPC API and a thin pure-JS
+        client. Least elegant, by far the cheapest to deliver and support, and the only option that
+        avoids per-platform native artifacts entirely. Worth costing honestly rather than dismissing.
+
+      Write the decision and its reasoning into this item before starting, because the items below
+      assume it.
+- [ ] **Decide the JS API shape, and write it down before implementing.** A `fetch`-shaped API is
+      what a JS caller will expect and would let existing code migrate by swapping the import, but
+      artiqwest's surface is narrower than `fetch` (no streaming bodies, no `AbortSignal`, GET/POST
+      only until Phase 2 lands) and pretending otherwise invites bug reports. Either implement a
+      genuine `fetch` subset and document exactly which parts are absent, or expose an explicitly
+      artiqwest-shaped API (`get`/`post`/`ws`) that does not imply more than it delivers. Prefer the
+      latter until the Phase 2 API work lands.
+- [ ] **Map the error type across the boundary.** Blocked on the Phase 2 item that makes `Error`
+      public — until callers can match on failure modes in Rust, a JS binding can only surface
+      opaque strings, which is not a usable API. Sequence these together.
+- [ ] **Decide how the Tor client is shared.** The Rust side keeps a process-wide `TorClient` behind a
+      `LazyLock`. Exposing that to JS raises questions the Rust API has so far avoided: does the JS
+      module own one implicit client, can a caller construct and pass several, and what happens on
+      bootstrap failure? Resolve alongside the Phase 3 global-client contract item.
+- [ ] **Decide where the Tor state directory lives for a JS caller.** The current CWD-relative
+      `./tor/arti/{state,cache}` is a poor default for an npm package — it would scatter state
+      wherever `node` happened to be started, and arti refuses a world-writable ancestor. Depends on
+      the Phase 3 configurable-directories item; a JS binding should probably default to a per-user
+      data directory instead.
+- [ ] **WebSockets across the boundary.** `ws` returns a Rust sink/stream pair. JS expects either the
+      `WebSocket` event API or an async iterator. Decide which, and note that this is the hardest part
+      of any binding strategy — a sidecar in particular needs its own framing for it.
+- [ ] **Publishing and CI.** An npm package, a release pipeline that builds whatever artifacts the
+      chosen strategy needs, and a smoke test that actually fetches over Tor from JS in CI. Note that
+      CI cannot currently run anything live-Tor at all (see Phase 4), so this needs that solved first
+      or an explicitly offline smoke test.
+- [ ] **Research the ecosystem before committing.** Check what already exists for Tor-from-JS and how
+      other arti consumers have approached bindings; `napi-rs` and `wasm-bindgen` release notes for
+      anything that changes the calculus above. Fold findings back into these items with source URLs.
 
 ## Cross-cutting
 

@@ -89,6 +89,33 @@ The highest-value work in the crate. Everything here is offline-verifiable.
       misclassified as HTTPS — which then picks port 443 and attempts a TLS upgrade on a plaintext
       endpoint. Match on the scheme properly (`ws`, `wss`, `http`, `https`) and unit-test the
       query-string case.
+- [ ] **Every HTTP/1.1 request carries a bogus `Upgrade: HTTP/2.0` header.** `construct_headers`
+      (`src/make_request.rs`) inserts `Upgrade: HTTP/2.0` unless the caller supplied an `Upgrade`, and
+      it feeds *both* the Tor path (via `MakeRequest::headers`) and the loopback `reqwest` path.
+
+      What actually reaches the wire depends on the negotiated protocol:
+      - **HTTP/2 — stripped, silently.** RFC 9113 §8.2.2 makes `Upgrade` a connection-specific field
+        and says a receiver "MUST treat this as a malformed message", so hyper's h2 client removes it
+        before sending (hyper 1.10.1 `src/proto/h2/client.rs` → `strip_connection_headers`). hyper's
+        accompanying `warn!` is compiled out unless built with `--cfg hyper_unstable_tracing`, so
+        nothing is logged. This is why nothing has visibly broken.
+      - **HTTP/1.1 — sent on every request.** That covers plain `http://`, HTTPS where the server did
+        not negotiate `h2`, and every loopback request. It violates RFC 9110 §7.8: "A sender of
+        Upgrade MUST also send an 'Upgrade' connection option in the Connection header field", and
+        no `Connection: upgrade` is ever sent. A server "MAY ignore a received Upgrade header field",
+        which is the likeliest reason this has gone unnoticed. HTTP/2 was only ever reachable by upgrade
+        through the `h2c` token, and RFC 9113 §3.1 deprecates that usage outright.
+
+      **Why it matters more for a Tor client than for most:** a nonstandard header on every
+      HTTP/1.1 request makes artiqwest's traffic distinguishable from other clients at the
+      destination. Keeping the request indistinguishable is part of the reason to use Tor at all.
+
+      Fix: delete the injection. The crate never performs an h2c upgrade, and it already selects
+      HTTP/2 correctly through ALPN (`negotiated_http_version`). Add a unit test that
+      `construct_headers` emits no `Upgrade` unless the caller set one.
+      Sources: <https://www.rfc-editor.org/rfc/rfc9110#section-7.8>,
+      <https://www.rfc-editor.org/rfc/rfc9113#section-8.2.2>,
+      <https://www.rfc-editor.org/rfc/rfc9113#section-3.1>.
 - [x] **Remove the panicking header serialization.** `UpstreamRequest`/`UpstreamResponse`
       (`src/response/upstream.rs`) both did `value.to_str().unwrap()` when serializing headers, so any
       non-ASCII header value panicked the caller's task. Now serialized with
@@ -176,9 +203,14 @@ The highest-value work in the crate. Everything here is offline-verifiable.
       check — it is a guess that both wastes 5s on a warm client and can be too short on a cold one.
 - [ ] **Document the global-client contract.** `TOR_CLIENT` is a process-wide `LazyLock`; spell out in
       the docs what that means for multi-tenant callers and isolation between requests.
-- [ ] **Per-request stream isolation.** Investigate `arti_client` isolation tokens so two unrelated
-      requests from one process are not correlatable through a shared circuit. `README.md` currently
-      warns that they may be.
+- [ ] **Per-request stream isolation.** Two unrelated requests from one process can currently share a
+      circuit, and so be correlated; `README.md` warns about this. **The API needed already exists in
+      the arti-client we pin** — no upgrade required: `TorClient::isolated_client()` (arti-client
+      0.43.0 `src/client.rs`) returns an `Arc<TorClient<R>>` that shares the original's internals but
+      never shares circuits with it, and its docs call it "usually preferable to creating a completely
+      separate TorClient instance". So this is a design question, not a research one: decide the
+      isolation *unit* (per call? per destination host? caller-chosen?) and whether it is on by
+      default. Interacts with the global-client contract item above.
 
 ## Phase 4 — Testing & CI
 
@@ -210,6 +242,20 @@ The highest-value work in the crate. Everything here is offline-verifiable.
 - [ ] **Two yanked crates in `Cargo.lock`** — `chacha20 v0.10.0` and `spin v0.9.8`, both surfaced as
       warnings by `cargo publish`. Neither is direct; find what pins them and move to unyanked
       versions.
+- [ ] **`h2` in `Cargo.lock` is affected by RUSTSEC-2026-0258** (GHSA-q83h-524g-xf6h): h2 accepted and
+      queued empty DATA frames without limit, so a server that does not drain streams could drive
+      unbounded memory use or a length-overflow panic. The advisory rates it low severity. The lock
+      has `h2 0.4.15`; the fix is in `>= 0.4.16`, and 0.4.19 is current. It reaches this crate through
+      hyper's HTTP/2 client.
+
+      This is **lockfile-only** for a library: artiqwest's dependents resolve `h2` themselves and
+      already get a patched version, so no published release is affected — including 0.5.0, which was
+      packaged with 0.4.15 in its lock. A cheap first increment: `cargo update -p h2`, verify, commit.
+
+      Worth noting what it says about process: this is the second advisory in a month found by
+      reading rather than by tooling (`quinn-proto` was the first), and `cargo publish` does not
+      audit, so nothing on the release path would have flagged it. That is the case for the
+      supply-chain gate item above. Source: <https://rustsec.org/advisories/RUSTSEC-2026-0258.html>.
 - [ ] **Declare an MSRV** (`rust-version` in `Cargo.toml`) and verify it in CI. `edition = "2024"`
       implies a floor, but `src/uri.rs` also uses let-chains, which raises it further — find the real
       minimum rather than guessing, then state it. `README.md` currently has to hedge on this.
@@ -245,6 +291,12 @@ The highest-value work in the crate. Everything here is offline-verifiable.
       already in `[dev-dependencies]`, and is what `arti` itself prefers. Scope the migration (ALPN,
       the per-host verification policy from Phase 1, the `.onion` self-signed case) before committing
       to it; a feature flag may be the landing strategy.
+
+      **There is now a working precedent next door.** onyums 0.5.0 made this exact move — it depends
+      on `tokio-rustls ^0.26.4` and `rustls-graviola ^0.4.0`, with no `native-tls` —
+      (<https://crates.io/api/v1/crates/onyums/0.5.0/dependencies>). Read how it handles the
+      self-signed onion certificate before designing artiqwest's side, since the `.onion` exemption
+      from Phase 1 has to survive the migration intact.
 - [ ] **Connection reuse.** Every request builds a fresh Tor stream and TLS handshake; a keep-alive
       pool keyed by host would remove seconds per request on repeat calls.
 - [ ] Benchmark request latency (onion and clearnet) so the pooling work above has a before/after
@@ -309,9 +361,28 @@ the choice determines everything after it:
 ## Cross-cutting
 
 - [ ] Keep `README.md` current with shipped capability only — never aspirational work. Where current
-      behavior is a hazard (the TLS verification gap, the missing timeouts, shared circuits), say so
-      plainly rather than omitting it.
+      behavior is a hazard (the missing timeouts, shared circuits), say so plainly rather than omitting
+      it — and remove the warning the release it stops being true, as the TLS one was in 0.5.0.
 - [ ] Keep dependencies current (`cargo update`, `cargo upgrade`), including majors, whenever they can
       be made green. Respect the deliberate pin: `arti-client` / `tor-rtcompat` are matched to the
-      versions the sibling `onyums` crate builds against.
+      versions the sibling `onyums` crate builds against. As of 2026-09-26 the other direct
+      dependencies have releases available: hyper 1.11.1 (we lock 1.10.1), reqwest 0.13.5 (0.13.4),
+      and tokio-tungstenite **0.30.0** (0.29). That last one is a `0.x` minor, so treat it as
+      potentially breaking — the websocket API changed under us at 0.29, and the README and doctest
+      `ws` examples are the canary.
+- [ ] **Move arti to 0.46, together with the onyums dev-dependency.** The pin above now points somewhere
+      new: onyums 0.5.0 requires `arti-client ^0.46.0` and `tor-rtcompat ^0.46.0`
+      (<https://crates.io/api/v1/crates/onyums/0.5.0/dependencies>), while artiqwest still pins
+      0.43.0 and dev-depends on onyums 0.3.1. arti-client 0.46.0 is the current release.
+
+      What is known about the jump, from the crates.io feature lists: 0.46 **removed** the
+      `counter-galois-onion` and `flowctl-cc` features (and added `hsc-/hss-negotiate-extensions`),
+      but artiqwest enables only `full` and `static`, and both still exist; `tor-rtcompat` 0.46 still
+      has `full`, `tokio`, and `native-tls`. So the manifest likely needs no feature edits — but the
+      API across three minors has not been checked, and should be.
+
+      **Move both in one change.** Bumping only onyums would put a second arti stack in every test
+      build (0.43 for the crate, 0.46 for onyums), and a cold build is already ~38 minutes on the dev
+      workstation. Also check the test helpers (`create_onyums_server`: `serve`, `get_onion_name`)
+      against the onyums 0.5 API, which has not been verified.
 - [ ] Keep `docs.rs` building; the README badge links it.

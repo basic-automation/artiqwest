@@ -16,9 +16,19 @@ symptom, and what "done" looks like. Start in Phase 1.
 
 Settled direction. Changing any of these is a discussion, not a patch.
 
-- **Tor-first, always.** Every non-loopback request goes over Tor. The only bypass is loopback
-  (`localhost`, `127.0.0.0/8`, `::1`). It is never widened to LAN or private ranges, and Tor is never
-  made opt-in.
+- **Tor-first, always — and Tor is the only road to the clearnet.** Every clearnet and `.onion`
+  request goes over Tor, and Tor is never made opt-in. The exceptions are scoped strictly by *address
+  space*, and none of them touches the clearnet:
+  - **Loopback** (`localhost`, `127.0.0.0/8`, `::1`) goes direct. It is never widened to LAN or
+    private ranges.
+  - **Another anonymity network's own hidden-service addresses** — `.i2p` eepsites, Hyphanet keys,
+    Freenet contract keys, and later perhaps `.loki` or GNS names — go over *that* network, and only
+    when its support is compiled in and enabled (Phase 7).
+
+  No other network is ever used as a path to the clearnet: no I2P outproxies, no Lokinet exit nodes, no
+  GNUnet exits. A request whose address belongs to no enabled network fails closed rather than falling
+  back to anything. *(Amended 2026-09-28 to admit Phase 7; previously "every non-loopback request goes
+  over Tor".)*
 - **The three primitives stay simple.** `get`, `post`, and `ws` are why people reach for this crate.
   New capability arrives additively (a builder, new functions); breaking those three requires a
   planned version bump and a loud note in the release.
@@ -357,6 +367,181 @@ the choice determines everything after it:
 - [ ] **Research the ecosystem before committing.** Check what already exists for Tor-from-JS and how
       other arti consumers have approached bindings; `napi-rs` and `wasm-bindgen` release notes for
       anything that changes the calculus above. Fold findings back into these items with source URLs.
+
+## Phase 7 — Other anonymity networks' hidden services
+
+Reach the native hidden-service addresses of other anonymity networks, the way artiqwest already
+reaches `.onion`: I2P eepsites, Hyphanet freesites and keys, Freenet web apps, and — if they become
+viable — Lokinet SNApps and GNUnet GNS names. **Clearnet stays on Tor**; see the amended *Tor-first*
+locked decision. Each network is a separate cargo feature, off by default, so no consumer pays for a
+network it does not use.
+
+This is research-then-implement: every network below carries a viability verdict from a research pass
+on 2026-09-28, with the sources that were actually read. Re-check them before starting — two of these
+projects release every few days.
+
+| Network | Verdict | Deciding facts |
+|---|---|---|
+| **I2P** | **Viable — do first** | Pure-Rust stack, MIT, tokio-based. One SAMv3 client serves both an embedded and an external router. |
+| **Hyphanet** | **Viable — GET only** | Content-addressed store, not hosts. FCPv2 is a simple text protocol; a Rust client links nothing. Needs a running (Java) node. |
+| **Freenet** (the new one) | **Viable via its gateway** | Web apps served by the local node over HTTP — reuses the loopback path. Node is AGPL: never embed. Very fast-moving. |
+| **Lokinet** | **Marginal — park** | GPL-3.0 C++, maintenance mode. Only license-clean route is the system daemon, which risks DNS leaks. |
+| **GNUnet** | **Not yet — park** | AGPL C, self-described early-adopter quality, network breaks across versions. |
+
+A note on names: the original Java *Freenet* was renamed **Hyphanet** in 2023, and the name *Freenet*
+now belongs to a separate, new Rust project. They are different networks and are handled separately
+below.
+
+### 7.0 — Prerequisites, shared by every network
+
+- [ ] **Route by address class, in one pure function.** Today the choice is hardwired: `get`, `post`
+      and `ws` (`src/lib.rs`) check `uri.is_local` and otherwise go to Tor. Replace that with a single
+      routing decision — address → `Network` (loopback, Tor, I2P, …) — kept pure and separate from any
+      I/O, the same way `cert_policy` was, so it can be unit-tested offline. It must be exhaustive and
+      **fail closed**: an address belonging to a network that is not compiled in or not enabled is an
+      error, never a fallback to Tor or to the clearnet.
+- [ ] **Extend the certificate policy per network, before any network ships.** Not all hidden-service
+      names authenticate themselves. A `.b32.i2p` address is a hash of the destination, so it is
+      self-authenticating like `.onion`. A human-readable `.i2p` name is *not*: it resolves through an
+      address book or a jump service, and the destination is only as trustworthy as that resolution.
+      Freenet and Hyphanet content arrives over a loopback gateway, where TLS does not apply at all.
+      `cert_policy` (`src/streams.rs`) should encode these distinctions explicitly rather than treating
+      every non-clearnet name like `.onion`.
+- [ ] **Typed "network unavailable" errors.** Most of these networks need a local node or router. When
+      it is not running, the caller should get an error that names the network and where it looked
+      (e.g. "I2P SAM bridge not reachable at 127.0.0.1:7656"), not an opaque connection failure.
+      Depends on the Phase 2 public `Error` type.
+- [ ] **Per-network configuration.** Router/node addresses, ports, and — for an embedded I2P router —
+      a state directory. Depends on the Phase 3 configurable-directories item and naturally belongs on
+      the Phase 2 request builder.
+
+### 7.1 — I2P (`.i2p`, `.b32.i2p`) — viable, recommended first
+
+The Rust ecosystem is healthy. `emissary` is a Rust implementation of the I2P router with NTCP2, SSU2,
+I2CP, SAMv3, and HTTP/SOCKS proxies, MIT-licensed and tokio-based; `emissary-core` 0.4.0 shipped
+2026-04-12 and the repository was active in 2026-07. Its embedding docs are explicit that
+"emissary-core doesn't provide Rust client interfaces and instead the router can be communicated with
+using SAMv3 and I2CP", using `yosemite` (0.7.0, MIT, same organisation) as the SAMv3 client. That is
+convenient: **one SAMv3 client works against an embedded emissary *and* an external router** (i2pd,
+Java I2P, or a standalone emissary). The old `i2p` crate is abandoned (last release 2017).
+Sources: <https://github.com/eepnet/emissary>,
+<https://eepnet.github.io/emissary/embedding-overview.html>, crates.io API for `emissary-core`,
+`yosemite`, `i2p`.
+
+- [ ] **External router over SAMv3 first.** Use `yosemite` to open a SAM stream to the destination,
+      then hand that stream to the existing `make_request` — which already accepts any
+      `AsyncRead + AsyncWrite`, exactly as it does for arti's `DataStream`. Cheapest, lowest risk, no
+      router lifecycle to own. Feature `i2p`.
+- [ ] **Embedded router as an option.** Run `emissary-core` in-process and drive it through the same
+      SAMv3 client. Feature `i2p-embedded`. Before shipping it, read the I2P project's guidelines for
+      embedding routers (linked from emissary's embedding docs): an embedded router joins the network
+      and should behave like a good citizen — persistent identity, sensible bandwidth sharing, no
+      throwaway routers per request. Budget for bootstrap/reseed time on first start.
+- [ ] **Hostname resolution.** Determine whether human-readable `.i2p` names resolve through SAM
+      (`NAMING LOOKUP`) against the embedded router's address book, or whether only `.b32.i2p` works
+      out of the box. Whatever the answer, surface it in the docs — and see the certificate-policy
+      item above for why the two kinds of name must not be trusted equally.
+- [ ] **TLS on I2P.** Most eepsites serve plain HTTP, relying on I2P's own end-to-end encryption.
+      Decide what `https://*.i2p` means and apply the per-network certificate policy.
+- [ ] **Never use outproxies.** I2P can reach the clearnet through outproxies. artiqwest must never do
+      so — Tor is the only road to the clearnet.
+- [ ] **Live test.** Like the Tor integration tests, an I2P round-trip needs a real network and will
+      be `#[ignore]`d; the routing decision and the SAM framing should be unit-tested offline.
+
+### 7.2 — Hyphanet (formerly the original Freenet) — viable, content GET only
+
+Hyphanet is a content-addressed store, not a network of servers: you fetch *keys* (`CHK@`, `SSK@`,
+`USK@`, `KSK@`), and a freesite is addressed as `USK@…/sitename/edition/`. The node is Java (GPL-2.0)
+and active — build 1507 released 2026-09-04. Clients speak **FCPv2**, a UTF-8 line-based text protocol
+on port 9481: a `ClientHello` handshake, then `ClientGet` with `URI`, `ReturnType`, and `Verbosity`,
+answered by `DataFound`/`AllData` or `GetFailed`. Because it is a wire protocol, a Rust client links
+nothing from the GPL node. The only Rust FCP crate, `fcpv2`, is 0.0.2 from 2021 — effectively nothing
+to reuse. Sources: <https://github.com/hyphanet/wiki/wiki/FCPv2>, GitHub API for `hyphanet/fred`,
+crates.io search.
+
+- [ ] **Decide how a caller names a key.** Hyphanet keys are not hostnames, so there is no TLD to route
+      on. Decide the addressing form artiqwest accepts (a bare `USK@…` string? a URI scheme?) and check
+      what prefix the Hyphanet ecosystem currently uses before inventing one.
+- [ ] **FCPv2 client vs FProxy.** Two routes: a pure-Rust FCPv2 client (the proper API; raw data out),
+      or rewriting to the node's FProxy HTTP gateway on loopback (much cheaper, reuses the existing
+      loopback path, but FProxy is a browser-facing gateway that filters content). Prototype FProxy to
+      learn the shape, and plan on FCP for correctness.
+- [ ] **Scope honestly.** `get` maps naturally to fetching a key. `post` and `ws` have no meaningful
+      equivalent — inserting content is a different operation entirely — so they should return a clear
+      "not supported on Hyphanet" error rather than guess.
+- [ ] **USK editions.** Updatable keys have editions; decide whether a fetch follows to the newest
+      edition or takes the one named.
+
+### 7.3 — Freenet (the new Rust project, `freenet-core`) — viable via its local gateway
+
+The new Freenet is a platform for decentralized web apps rather than a way to reach arbitrary TCP
+services: its own description is apps "accessed through any browser just like the web". An app is
+identified by a **contract key** (base58), and the local node serves it over HTTP at
+`http://127.0.0.1:<port>/v1/contract/web/<key>/` (a `/v2/` route also exists) — see
+`crates/core/src/server/client_api/v1.rs` and `crates/fdev/src/website.rs`. The source shows both
+`7509` and `50509` in different places; confirm the default before relying on either.
+
+Licensing decides the integration: `freenet-core` is **AGPL**, while `freenet-stdlib`, which apps are
+meant to build against, is **LGPL-3.0**. Embedding the node would pull artiqwest under the AGPL, and
+statically linking an LGPL crate into an MIT library carries relinking obligations that need a
+deliberate answer. The clean route is the wire protocol.
+
+It is also moving very fast — still `0.2.x`, with v0.2.137, v0.2.138 and v0.2.139 released on
+2026-09-24, -25 and -27. Sources: <https://github.com/freenet/freenet-core> (README, `LICENSE.md`),
+GitHub API releases, crates.io API for `freenet` and `freenet-stdlib`.
+
+- [ ] **Decide how a caller names a contract.** As with Hyphanet there is no TLD; choose an addressing
+      form, and check whether the Freenet project has settled on a URI scheme first.
+- [ ] **Implement as a routing rewrite onto the loopback path.** Map a contract address to the local
+      gateway URL and send it through the existing loopback path. Do this *after* the Phase 2 loopback
+      fixes — the loopback path currently corrupts binary bodies, which a web app will hit
+      immediately.
+- [ ] **WebSockets.** Freenet web apps talk to the node over WebSocket, so `ws` may be meaningful here
+      in a way it is not for Hyphanet. Investigate what an external client would actually want.
+- [ ] **Do not embed `freenet-core`; do not link `freenet-stdlib` without resolving the LGPL question.**
+- [ ] **Pin and re-verify.** Given the release cadence, pin integration tests to a specific node
+      version, and re-check the gateway routes before each artiqwest release that touches this.
+
+### 7.4 — Lokinet (`.loki`) — marginal; research only, then park
+
+Lokinet is GPL-3.0 and written in C++. It is in maintenance mode: since v0.9.11 (2022-11-30) there have
+been only v0.9.13 (2025-02-28) and v0.9.14 (2025-07-28), both network housekeeping — service-node
+fixes and a bootstrap-list update for the Session Technology Foundation's new servers — and the most
+recent commit (2026-07) updates an apt signing key. Sources: <https://github.com/oxen-io/lokinet/releases>,
+GitHub API for `oxen-io/lokinet`, `include/lokinet/stream.h` on the `dev` branch.
+
+- [ ] **Embedding is ruled out, on two locked grounds.** liblokinet exposes a C API —
+      `lokinet_outbound_stream(result, "name:port", localAddr, ctx)` maps a remote `.loki` endpoint to
+      a local `ip:port` — but linking it would put artiqwest under the GPL-3.0, and it is exactly the
+      kind of C/C++ dependency the locked decisions forbid adding.
+- [ ] **The only license-clean route is the system daemon**, which provides a TUN interface and a
+      resolver for `.loki`, after which a `.loki` address is reachable over ordinary OS networking. It
+      needs a privileged daemon the user must run. **The hazard to design against is a DNS leak:** if
+      artiqwest hands a `.loki` name to the system resolver while lokinet is *not* running, the query
+      goes to whatever DNS server is configured — leaking the destination in clear. Any
+      implementation must confirm lokinet's resolver is in place and fail closed otherwise.
+- [ ] **Viability gate.** Do not implement unless the project shows renewed development. Otherwise mark
+      this item PARKED with that diagnosis.
+
+### 7.5 — GNUnet (GNS names) — not yet viable; research only, then park
+
+GNUnet is AGPL-3.0-or-later and written in C. The project's own 0.29.0 release notes say it is "still
+only suitable for early adopters with some reasonable pain tolerance", note "some critical privacy
+issues especially for mobile users", and warn that current peers are "INCOMPATIBLE with the 0.28.X
+GNUnet network". The Rust bindings are dead (`gnunet` 0.0.15 from 2016, `gnunet-sys` 0.0.4 from 2021).
+Sources: <https://www.gnunet.org/en/news/2026-08-0.29.0.html>,
+<https://docs.gnunet.org/latest/users/gns.html>, <https://en.wikipedia.org/wiki/GNUnet> (license),
+crates.io API.
+
+- [ ] **The only license-clean route is `gnunet-gns-proxy`,** which the GNS docs describe as "a SOCKS5
+      proxy running (by default) on port 7777", resolving GNS names — while also warning "the proxy is
+      still a bit brittle, so expect subtle failures." artiqwest has no SOCKS5 client today, so this
+      would add one.
+- [ ] **Addressing is a real design problem.** GNS names live in user-controlled zones (the docs' own
+      example is `www.myzone`), not a fixed TLD, so artiqwest cannot recognise a GNS name by its suffix
+      beyond `.gnu`. Routing would need an explicit per-request choice.
+- [ ] **Viability gate.** Do not implement until GNUnet declares a stable, compatible network.
+      Otherwise mark this item PARKED with that diagnosis.
 
 ## Cross-cutting
 

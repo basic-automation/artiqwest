@@ -370,19 +370,17 @@ the choice determines everything after it:
       and tokio-tungstenite **0.30.0** (0.29). That last one is a `0.x` minor, so treat it as
       potentially breaking — the websocket API changed under us at 0.29, and the README and doctest
       `ws` examples are the canary.
-- [ ] **Move arti to 0.46, together with the onyums dev-dependency.** The pin above now points somewhere
-      new: onyums 0.5.0 requires `arti-client ^0.46.0` and `tor-rtcompat ^0.46.0`
-      (<https://crates.io/api/v1/crates/onyums/0.5.0/dependencies>), while artiqwest still pins
-      0.43.0 and dev-depends on onyums 0.3.1. arti-client 0.46.0 is the current release.
-
-      What is known about the jump, from the crates.io feature lists: 0.46 **removed** the
-      `counter-galois-onion` and `flowctl-cc` features (and added `hsc-/hss-negotiate-extensions`),
-      but artiqwest enables only `full` and `static`, and both still exist; `tor-rtcompat` 0.46 still
-      has `full`, `tokio`, and `native-tls`. So the manifest likely needs no feature edits — but the
-      API across three minors has not been checked, and should be.
-
-      **Move both in one change.** Bumping only onyums would put a second arti stack in every test
-      build (0.43 for the crate, 0.46 for onyums), and a cold build is already ~38 minutes on the dev
-      workstation. Also check the test helpers (`create_onyums_server`: `serve`, `get_onion_name`)
-      against the onyums 0.5 API, which has not been verified.
+- [x] **Move arti to 0.47, together with the onyums dev-dependency** — done 2026-11-02 in 0.6.0, one
+      change as planned. arti-client / tor-rtcompat 0.43 -> 0.47 (Arti 2.7.0) needed **no source or
+      feature edits** in the crate: `full` and `static` still exist and the API artiqwest uses is
+      unchanged. onyums went 0.3.1 -> 0.6.0, the release that moved onyums itself to arti 0.47, so the
+      test build carries a single arti stack. The test helper did need porting: onyums dropped the
+      global `get_onion_name()` for a per-service handle, so `create_onyums_server` now uses
+      `OnionService::builder()` with `no_skin()` (the tests assert on the router's own responses, not
+      Skin's challenge page) and `ephemeral()` (a throwaway identity, so the fixture does not depend on
+      a persistent `./tor` tree). 0.6.0 rather than 0.5.1 because arti's `TorClient` and tungstenite's
+      `Message` (0.29 -> 0.30) are both in the public signatures.
+      - *Not yet run against live Tor on the dev workstation:* arti refuses state directories under a
+        world-writable ancestor, and `/mnt/deepmem` is mode 0777. Run the three `--ignored` tests from a
+        checkout under a non-world-writable path.
 - [ ] Keep `docs.rs` building; the README badge links it.

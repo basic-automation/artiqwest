@@ -278,9 +278,8 @@ mod tests {
 	use axum::routing::{get as axum_get, post as axum_post};
 	use axum::serve as axum_serve;
 	use futures_util::SinkExt;
+	use onyums::OnionService;
 	use onyums::Router;
-	use onyums::get_onion_name;
-	use onyums::serve;
 	use rand::RngExt; // provides `random_range` in rand 0.10
 	use serde_json::json;
 	use serial_test::serial; // Add this import
@@ -520,18 +519,14 @@ mod tests {
 		// before onyums builds its TLS config. Idempotent across the serial tests.
 		let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
-		// spawn an onyums server on a new thread and return the onion address
-		tokio::spawn(async {
-			serve(create_router(), "my_onion").await.unwrap();
-		});
+		// launch an onyums server and return the onion address. `no_skin` because the
+		// tests assert on the router's own responses, not the abuse-defense challenge page.
+		let handle = OnionService::builder().router(create_router()).nickname("my_onion").no_skin().ephemeral().serve().await.unwrap();
+		handle.ready().await;
+		let onion_name = handle.onion_address().to_string();
 
-		let mut onion_name = String::new();
-		while onion_name.is_empty() {
-			onion_name = get_onion_name();
-
-			// wait for 200 milliseconds before checking again
-			tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-		}
+		// dropping the handle tears the service down, so keep it up for the rest of the test
+		std::mem::forget(handle);
 		onion_name
 	}
 

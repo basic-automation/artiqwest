@@ -23,7 +23,7 @@ WebSockets over either.
 
 ```toml
 [dependencies]
-artiqwest = "0.5"
+artiqwest = "0.6"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 ```
